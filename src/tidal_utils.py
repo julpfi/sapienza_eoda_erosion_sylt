@@ -15,7 +15,7 @@ from config import (
 
 
 # -------------------- Download/Load --------------------
-def download_cmems_data(output=CMEMS_DATA_PATH):
+def download_cmems_data(output:str=CMEMS_DATA_PATH) -> pd.DataFrame:
     """Download Sea Surface Height from CMEMS and cache to CSV under given path"""
     os.makedirs(os.path.dirname(output), exist_ok=True)
 
@@ -40,7 +40,7 @@ def download_cmems_data(output=CMEMS_DATA_PATH):
     return ssh_df
 
 
-def load_cmems_data(cache=CMEMS_DATA_PATH):
+def load_cmems_data(cache=CMEMS_DATA_PATH) -> pd.Series | pd.DataFrame:
     """Load SSH time series from CSV cache (download if not found)"""
     if not os.path.exists(cache):
         return download_cmems_data(output=cache)
@@ -52,13 +52,13 @@ def load_cmems_data(cache=CMEMS_DATA_PATH):
 
 
 # -------------------- Helper methods --------------------
-def _level_at(dt, ssh_df):
+def _level_at(dt:str, ssh_df:pd.DataFrame|pd.Series) -> float:
     """Return SSH (m) at the nearest hour to datetime dt"""
     dt = pd.to_datetime(dt, utc=True)
     return float(ssh_df.iloc[ssh_df.index.get_indexer([dt], method="nearest")[0]])
 
 
-def _build_lookup(col, ssh_df):
+def _build_lookup(col:ee.ImageCollection, ssh_df:pd.DataFrame|pd.Series) -> dict[str, float]:
     """
     Return {system:index -> water_level_m} for every image in the collection
     """
@@ -71,7 +71,7 @@ def _build_lookup(col, ssh_df):
     }
 
 
-def _get_bin_label(tidal_height):
+def _get_bin_label(tidal_height:float) -> str:
     for i in range(len(BIN_LABELS)):
         if BIN_EDGES[i] <= tidal_height < BIN_EDGES[i + 1]:
             return BIN_LABELS[i]
@@ -80,7 +80,7 @@ def _get_bin_label(tidal_height):
 
 
 # ---------- Append Sea Surface Height to GEE collection ----------
-def append_ssh_height(col):
+def append_ssh_height(col:ee.ImageCollection) -> ee.ImageCollection:
     """Add 'tidal_height_m' property to every image in the collection."""
     ssh_df      = load_cmems_data()
     lookup      = _build_lookup(col, ssh_df)
@@ -92,7 +92,7 @@ def append_ssh_height(col):
     ))
 
 
-def append_ssh_bins(col):
+def append_ssh_bins(col:ee.ImageCollection) -> ee.ImageCollection:
     """Add 'tidal_bin' string property based on tidal stage."""
     ssh_df      = load_cmems_data()
     lookup      = _build_lookup(col, ssh_df)
@@ -106,7 +106,7 @@ def append_ssh_bins(col):
 
 
 # ---------- Filter strategies ----------
-def filter_window(col, bound=TIDAL_WINDOW_M):
+def filter_window(col:ee.ImageCollection, bound:float=TIDAL_WINDOW_M) -> ee.ImageCollection:
     """Option A: keep only images within +/- bound metres of MSL"""
     return col.filter(
         ee.Filter.And(
@@ -117,7 +117,7 @@ def filter_window(col, bound=TIDAL_WINDOW_M):
     )
 
 
-def filter_bin(col, bin_label):
+def filter_bin(col:ee.ImageCollection, bin_label:str) -> ee.ImageCollection:
     """Option B: keep only images belonging to a specific tidal bin"""
     return col.filter(ee.Filter.eq("tidal_bin", bin_label))
 
