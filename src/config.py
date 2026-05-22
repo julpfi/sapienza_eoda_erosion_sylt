@@ -31,10 +31,40 @@ END_DATE    = "2024-12-31"
 
 
 # SAR Config --------------------------------------------------
-S1_COLLECTION = "COPERNICUS/S1_GRD"
+S1_COLLECTION = "COPERNICUS/S1_GRD_FLOAT"
 S1_PASS = "DESCENDING"
-S1_ORBIT = None   #TODO Set after inspecting via .aggregate_array("relativeOrbitNumber_start")
+S1_ORBIT = 139
 
+"""
+Number of images available between "2017-01-01" and "2024-12-31" grouped by the tidal bins 
+Orbit 37 (DESCENDING)
+  - high_mid: 91 images
+  - low_mid: 69 images
+  - near_msl: 104 images
+  - very_high: 17 images
+  - very_low: 129 images
+
+Orbit 139 (DESCENDING)
+  - high_mid: 97 images
+  - low_mid: 68 images
+  - near_msl: 119 images
+  - very_high: 19 images
+  - very_low: 131 images
+
+Orbit 15 (ASCENDING)
+  - high_mid: 115 images
+  - low_mid: 58 images
+  - near_msl: 92 images
+  - very_high: 31 images
+  - very_low: 104 images
+
+Orbit 117 (ASCENDING)
+  - high_mid: 120 images
+  - low_mid: 64 images
+  - near_msl: 86 images
+  - very_high: 26 images
+  - very_low: 98 images
+"""
 
 # Optical Config ----------------------------------------------
 S2_COLLECTION    = "COPERNICUS/S2_SR_HARMONIZED"
