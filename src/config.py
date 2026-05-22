@@ -37,33 +37,33 @@ S1_ORBIT = 139
 
 """
 Number of images available between "2017-01-01" and "2024-12-31" grouped by the tidal bins 
-Orbit 37 (DESCENDING)
-  - high_mid: 91 images
-  - low_mid: 69 images
-  - near_msl: 104 images
-  - very_high: 17 images
-  - very_low: 129 images
+Orbit 37  (DESCENDING)
+- high_mid: 87 images
+- low_mid: 60 images
+- near_msl: 95 images
+- very_high: 17 images
+- very_low: 121 images
 
 Orbit 139 (DESCENDING)
-  - high_mid: 97 images
-  - low_mid: 68 images
-  - near_msl: 119 images
-  - very_high: 19 images
-  - very_low: 131 images
+- high_mid: 88 images
+- low_mid: 60 images
+- near_msl: 105 images
+- very_high: 19 images
+- very_low: 117 images
 
 Orbit 15 (ASCENDING)
-  - high_mid: 115 images
-  - low_mid: 58 images
-  - near_msl: 92 images
-  - very_high: 31 images
-  - very_low: 104 images
+- high_mid: 109 images
+- low_mid: 54 images
+- near_msl: 87 images
+- very_high: 28 images
+- very_low: 99 images
 
-Orbit 117 (ASCENDING)
-  - high_mid: 120 images
-  - low_mid: 64 images
-  - near_msl: 86 images
-  - very_high: 26 images
-  - very_low: 98 images
+Orbit 117  (ASCENDING)
+- high_mid: 117 images
+- low_mid: 59 images
+- near_msl: 83 images
+- very_high: 26 images
+- very_low: 97 images
 """
 
 # Optical Config ----------------------------------------------
@@ -97,3 +97,7 @@ TIDAL_WINDOW_M = 0.25   # metres either side of MSL (Option A)
 BIN_EDGES  = [-3.0, -0.75, -0.25, 0.25, 0.75, 3.0]
 BIN_LABELS = ["very_low", "low_mid", "near_msl", "high_mid", "very_high"]
 
+
+
+# SAR Analyis 
+EVENT_DATE_ORKAN_ZEYNEP = "2022-02-19"
