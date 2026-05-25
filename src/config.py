@@ -24,10 +24,47 @@ GEO_JSON_SYLT_COMPLETE = {
   ]
 }
 
+# Output Paths
+OUTPUT_PLOTS = "outputs/plots/"
+OUTPUT_ANIMATIONS = "outputs/animations/"
 
 # Date range --------------------------------------------------
 START_DATE  = "2017-01-01"
 END_DATE    = "2024-12-31"
+
+
+# Visualization Settings --------------------------------------
+VIS_SAR_VV = {
+    "min": -25, 
+    "max": 0, 
+    "palette": ["000000", "ffffff"]
+}
+
+# Binary water mask (0 = land, 1 = water)
+VIS_BINARY_WATER_MASK = {
+    "min": 0, 
+    "max": 1, 
+    "palette": ["d4d4d4", "2255aa"]
+}
+
+# Change Map
+VIS_CHANGE_MAP = {
+    "min": 0, 
+    "max": 3,
+    "palette": [
+        "888888",   # 0 – Consistent land
+        "00ccff",   # 1 – new water (erosion)
+        "ff3333",   # 2 – new land (recovery)
+        "224488",   # 3 – Consistent water
+    ]
+}
+
+CHANGE_MAP_LABELS = [
+    "Consistent land",
+    "New water (erosion)",
+    "New land (recovery)",
+    "Consistent water"
+]
 
 
 # SAR Config --------------------------------------------------
