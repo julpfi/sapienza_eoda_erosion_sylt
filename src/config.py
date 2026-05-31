@@ -67,6 +67,19 @@ CHANGE_MAP_LABELS = [
 ]
 
 
+VIS_S2_TRUE_COLOR = {
+    "min": 0,
+    "max": 3000,
+}
+ 
+# NDWI  = (Green – NIR) / (Green + NIR)  →  water > 0
+VIS_S2_NDWI = {
+    "min": -0.3,
+    "max":  0.5,
+    "palette": ["d4d4d4", "aaddff", "0066cc"],
+}
+
+
 # SAR Config --------------------------------------------------
 S1_COLLECTION = "COPERNICUS/S1_GRD_FLOAT"
 S1_PASS = "DESCENDING"

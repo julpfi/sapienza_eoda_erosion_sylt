@@ -123,22 +123,7 @@ def plot_single_image_s2(
 #  3. Time-Series GIF
 # ------------------------------------------------------------ #
 
-def generate_s2_timeseries_gif(
-    col:  ee.ImageCollection,
-    ndwi: bool = False,
-    fps:  int  = 1,
-    width: int = 600,
-):
-    """
-    Build an animated GIF from all images in col.
-
-    Parameters
-    ----------
-    col   : mosaiced & tidal-tagged S2 collection
-    ndwi  : if True render NDWI instead of true colour
-    fps   : frames per second
-    width : output pixel width
-    """
+def generate_s2_timeseries_gif(col:  ee.ImageCollection,ndwi: bool = False, fps:  int  = 1, width: int = 600):
     aoi = _get_aoi()
 
     times = col.aggregate_array("system:time_start").getInfo()
@@ -159,10 +144,10 @@ def generate_s2_timeseries_gif(
 
     print("Rendering and downloading raw GIF from GEE…")
     gif_url = col_prepared.getVideoThumbURL({
-        "dimensions":    width,
-        "region":        aoi,
+        "dimensions": width,
+        "region": aoi,
         "framesPerSecond": fps,
-        "crs":           "EPSG:3857",
+        "crs": "EPSG:3857",
     })
     response = requests.get(gif_url)
     response.raise_for_status()
@@ -184,7 +169,7 @@ def generate_s2_timeseries_gif(
         frames.append(frame)
 
     output_path = f"{OUTPUT_ANIMATIONS}timeseries_s2_{mode_tag}.gif"
-    print(f"Saving GIF ({len(frames)} frames) to {output_path}…")
+    print(f"Saving GIF ({len(frames)} frames) to {output_path}")
     frames[0].save(
         output_path,
         save_all=True,
@@ -192,4 +177,4 @@ def generate_s2_timeseries_gif(
         loop=0,
         duration=int(1000 / fps),
     )
-    print("Finished")
+    print("Done")
