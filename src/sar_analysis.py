@@ -7,10 +7,11 @@ import matplotlib.patches as mpatches
 from PIL import Image, ImageDraw, ImageSequence
 import ee
 
-from collection_utils import _get_aoi
-from config import (START_DATE, END_DATE, 
-                    OUTPUT_ANIMATIONS, OUTPUT_PLOTS, 
-                    VIS_BINARY_WATER_MASK, VIS_CHANGE_MAP, CHANGE_MAP_LABELS, VIS_SAR_VV)
+from collection_utils import _get_aoi, _get_calibration_strip
+from config import (START_DATE, END_DATE,
+                    OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
+                    VIS_BINARY_WATER_MASK, VIS_CHANGE_MAP, CHANGE_MAP_LABELS, VIS_SAR_VV,
+                    OTSU_MIN_WATER_PIXELS)
 
 
 # ------------------------------------------------------------ #
@@ -90,28 +91,40 @@ def _otsu(histogram: ee.Dictionary) -> ee.Number:
 
 
 
-def get_otsu_mask(img:ee.Image, scale:int=40, redefined:bool=True) -> ee.Image:
-    """Executes Otsu on Google Earth Engine"""
+def get_otsu_mask(img:ee.Image, scale:int=40, redefined:bool=True,
+                  calibration_geom:ee.Geometry=None, connected_components:bool=True) -> ee.Image:
+    """Executes Otsu on Google Earth Engine.
+    calibration_geom:      geometry used for histogram sampling; defaults to _get_calibration_strip().
+    connected_components:  if True, removes isolated water pockets via connectedPixelCount.
+    """
     comp = (img.select("VV").multiply(img.select("VH")).log10().multiply(10).rename("vv_vh_composite"))
 
     if redefined:
-         # 1. Speckle suppression: median filter over a 3x3 kernel (~120 m at 40 m GSD)
         comp = comp.focal_median(radius=3, kernelType="circle", units="pixels")
 
+    geom = calibration_geom if calibration_geom is not None else _get_calibration_strip()
+
     hist = comp.reduceRegion(
-        reducer  = ee.Reducer.histogram(maxBuckets=256),
-        geometry = _get_aoi(),
-        scale    = scale,
+        reducer    = ee.Reducer.histogram(maxBuckets=256),
+        geometry   = geom,
+        scale      = scale,
         bestEffort = True,
     )
     threshold = _otsu(ee.Dictionary(hist.get("vv_vh_composite")))
 
     mask = comp.lt(threshold).rename("water")
 
-    if redefined: 
+    if redefined:
         mask = mask.focal_mode(radius=2, kernelType="circle", units="pixels")
-        
-    return mask.rename("water").copyProperties(img, img.propertyNames())
+
+    if connected_components:
+        # Remove isolated water pockets (inland ponds, specular surfaces such as airport tarmac)
+        # by keeping only water pixels that belong to a connected region >= OTSU_MIN_WATER_PIXELS.
+        # The open sea always exceeds this count; isolated inland water bodies do not.
+        water_conn = mask.connectedPixelCount(maxSize=1024, eightConnected=False)
+        mask = mask.And(water_conn.gte(OTSU_MIN_WATER_PIXELS))
+
+    return ee.Image(mask.rename("water").copyProperties(img, img.propertyNames()))
 
 
 
@@ -119,6 +132,30 @@ def get_otsu_mask(img:ee.Image, scale:int=40, redefined:bool=True) -> ee.Image:
 # ------------------------------------------------------------ #
 #  3. General Analyis
 # ------------------------------------------------------------ #
+
+def plot_otsu_comparison(img: ee.Image, scale: int = 40):
+    """Temporary diagnostic: Otsu mask without vs with connected-component filtering."""
+    aoi = _get_aoi()
+
+    mask_without_cc = get_otsu_mask(img, scale=scale, redefined=True, connected_components=False)
+    mask_with_cc    = get_otsu_mask(img, scale=scale, redefined=True, connected_components=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    try:
+        fig.suptitle(f"Connected-component filter comparison\n{_img_label(img)}", fontsize=12)
+    except Exception:
+        fig.suptitle("Connected-component filter comparison", fontsize=12)
+
+    axes[0].imshow(_open_image_thumbnail(mask_without_cc, aoi, VIS_BINARY_WATER_MASK))
+    axes[0].set_title("Without connected components", fontsize=10)
+    axes[0].axis("off")
+
+    axes[1].imshow(_open_image_thumbnail(mask_with_cc, aoi, VIS_BINARY_WATER_MASK))
+    axes[1].set_title(f"With connected components (min {OTSU_MIN_WATER_PIXELS} px)", fontsize=10)
+    axes[1].axis("off")
+
+    plt.tight_layout()
+    plt.show()
 def plot_single_image(img: ee.Image, title:str="GEE Image", save:bool=False):
     aoi = _get_aoi()
     
@@ -275,9 +312,11 @@ def generate_sar_timeseries_gif(col:ee.ImageCollection, mask:bool, fps:int=2, wi
 
         frames.append(frame)
 
-    print(f"Saving GIF to {OUTPUT_ANIMATIONS}...")
+    mode_tag    = "mask" if mask else "vv"
+    output_path = f"{OUTPUT_ANIMATIONS}timeseries_sar_{mode_tag}.gif"
+    print(f"Saving GIF ({len(frames)} frames) to {output_path}...")
     frames[0].save(
-        OUTPUT_ANIMATIONS + "timeseries_sar_unrefined_otsu.gif",
+        output_path,
         save_all=True,
         append_images=frames[1:],
         loop=0,

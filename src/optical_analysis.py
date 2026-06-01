@@ -59,9 +59,11 @@ def _get_image_for_date(col: ee.ImageCollection, target_date: str) -> ee.Image:
 
 def _compute_ndwi(img: ee.Image) -> ee.Image:
     """NDWI = (Green − NIR) / (Green + NIR)  →  positive values = water"""
-    return (img.normalizedDifference(["B3", "B8"])
-               .rename("NDWI")
-               .copyProperties(img, img.propertyNames()))
+    return ee.Image(
+        img.normalizedDifference(["B3", "B8"])
+           .rename("NDWI")
+           .copyProperties(img, img.propertyNames())
+    )
 
 
 # ------------------------------------------------------------ #

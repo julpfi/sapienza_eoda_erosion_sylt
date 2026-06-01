@@ -1,7 +1,166 @@
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
 # GEE Config --------------------------------------------------
 GEE_PROJECT_ID = 'eoda-2026-ee-pfingsten'
 
 # GEO Json ----------------------------------------------------
+GEO_JSON_SYLT_COASTLINE_BOUNDARY = {
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              8.2612894,
+              54.7380943
+            ],
+            [
+              8.3044756,
+              54.7304221
+            ],
+            [
+              8.3156618,
+              54.7526596
+            ],
+            [
+              8.3177792,
+              54.7914382
+            ],
+            [
+              8.3198966,
+              54.8161517
+            ],
+            [
+              8.3254512,
+              54.8456258
+            ],
+            [
+              8.3390573,
+              54.8556695
+            ],
+            [
+              8.3487425,
+              54.8581202
+            ],
+            [
+              8.3688577,
+              54.85294
+            ],
+            [
+              8.3879142,
+              54.8413585
+            ],
+            [
+              8.4244392,
+              54.8358714
+            ],
+            [
+              8.4606181,
+              54.8495226
+            ],
+            [
+              8.4929364,
+              54.8675106
+            ],
+            [
+              8.5017364,
+              54.8760798
+            ],
+            [
+              8.489549,
+              54.8852288
+            ],
+            [
+              8.4287335,
+              54.8874998
+            ],
+            [
+              8.3942664,
+              54.9004504
+            ],
+            [
+              8.3843756,
+              54.9168755
+            ],
+            [
+              8.376157,
+              54.9395236
+            ],
+            [
+              8.3761665,
+              54.9668873
+            ],
+            [
+              8.3954554,
+              54.9908823
+            ],
+            [
+              8.4458995,
+              55.0026406
+            ],
+            [
+              8.4614022,
+              55.018515
+            ],
+            [
+              8.4569729,
+              55.0305753
+            ],
+            [
+              8.476905,
+              55.0362869
+            ],
+            [
+              8.4979444,
+              55.0458043
+            ],
+            [
+              8.4669389,
+              55.0629299
+            ],
+            [
+              8.421538,
+              55.073075
+            ],
+            [
+              8.3772444,
+              55.0673687
+            ],
+            [
+              8.2994944,
+              54.9711062
+            ],
+            [
+              8.254573,
+              54.893281
+            ],
+            [
+              8.2543649,
+              54.8259302
+            ],
+            [
+              8.2480013,
+              54.7674906
+            ],
+            [
+              8.2612894,
+              54.7380943
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
+
+
+
 GEO_JSON_SYLT_COMPLETE = {
   "type": "FeatureCollection",
   "features": [
@@ -24,9 +183,16 @@ GEO_JSON_SYLT_COMPLETE = {
   ]
 }
 
-# Output Paths
-OUTPUT_PLOTS = "outputs/plots/"
-OUTPUT_ANIMATIONS = "outputs/animations/"
+# SAR post-processing ------------------------------------------
+# connectedPixelCount threshold: water pixels belonging to a connected region smaller
+# than this are reclassified as land (removes inland ponds, airport tarmac specular, etc.).
+# At native 10 m GRD resolution: 256 pixels ≈ 25 600 m² (≈ 160 m × 160 m square).
+# Increase if large specular surfaces (e.g. airport) survive; decrease to keep small inlets.
+OTSU_MIN_WATER_PIXELS = 256
+
+# Output Paths (absolute, anchored to repo root so scripts can run from any cwd)
+OUTPUT_PLOTS      = str(_REPO_ROOT / "outputs" / "plots") + "/"
+OUTPUT_ANIMATIONS = str(_REPO_ROOT / "outputs" / "animations") + "/"
 
 # Date range --------------------------------------------------
 START_DATE  = "2017-01-01"

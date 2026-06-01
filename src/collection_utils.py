@@ -1,7 +1,8 @@
 import ee
 
 from config import (
-    GEO_JSON_SYLT_COMPLETE, START_DATE, END_DATE,
+    GEO_JSON_SYLT_COMPLETE, GEO_JSON_SYLT_COASTLINE_BOUNDARY,
+    START_DATE, END_DATE,
     S1_COLLECTION, S1_PASS, S1_ORBIT,
     S2_COLLECTION, MAX_CLOUD_PERC, OPTICAL_MONTHS,
 )
@@ -16,6 +17,15 @@ def _get_aoi(option:str="Complete") -> ee.Geometry:
     if option == "Complete":
         return ee.Geometry(GEO_JSON_SYLT_COMPLETE["features"][0]["geometry"])
     return None
+
+
+def _get_calibration_strip() -> ee.Geometry:
+    """Intertidal coastal strip for Otsu histogram calibration.
+    Falls back to full AOI if the coastal boundary is not yet configured.
+    """
+    if GEO_JSON_SYLT_COASTLINE_BOUNDARY is None:
+        return _get_aoi()
+    return ee.Geometry(GEO_JSON_SYLT_COASTLINE_BOUNDARY["features"][0]["geometry"])
 
 
 def _get_base_collection(collection_id:str, aoi:ee.Geometry, start:str, end:str) -> ee.ImageCollection:
@@ -44,7 +54,7 @@ def _mosaic_by_day(col:ee.ImageCollection) -> ee.ImageCollection:
         day_slices = col.filterDate(date_start, date_end)
         base_image = day_slices.sort("system:time_start").first()
 
-        mosaic = day_slices.mosaic().copyProperties(base_image, base_image.propertyNames())
+        mosaic = ee.Image(day_slices.mosaic().copyProperties(base_image, base_image.propertyNames()))
         mosaic_list.append(mosaic)
 
     return ee.ImageCollection.fromImages(mosaic_list)

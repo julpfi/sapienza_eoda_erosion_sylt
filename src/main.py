@@ -81,6 +81,26 @@ def sar_timeseries(tidal_bin:str=BIN_LABELS[3]):
 
 
 
+# ---------------------- SAR Otsu test -------------------------------
+def sar_otsu_test(date:str=None, tidal_bin:str=BIN_LABELS[2]):
+    """Side-by-side comparison of old Otsu (full AOI) vs new Otsu (calibration strip).
+    If date is None, uses the most recent image in the tidal bin.
+    """
+    s1_col = get_col(collection="S1", tidal_bin=tidal_bin)
+
+    if date is not None:
+        start_date = ee.Date(date)
+        day_col    = s1_col.filterDate(start_date, start_date.advance(1, "day"))
+        if day_col.size().getInfo() == 0:
+            print(f"No image found on {date} during a '{tidal_bin}' tide.")
+            return
+        img = day_col.first()
+    else:
+        img = s1_col.sort("system:time_start", False).first()
+
+    sar.plot_otsu_comparison(img)
+
+
 # ---------------------- Optical -------------------------------
 def opt_timeseries(tidal_bin:str=BIN_LABELS[2]):
     col = get_col(collection="S2", tidal_bin=tidal_bin)
@@ -101,4 +121,6 @@ if __name__ == "__main__":
     # event_analyis_sar()
     # sar_timeseries()
     #sar_one_image("2019-06-27")
-    opt_one_image(date="2022-07-15")
+    # opt_one_image(date="2022-07-15")
+    # sar_otsu_test("2019-06-27")                      # easy summer image
+    sar_otsu_test(tidal_bin="very_high")               # most recent storm/surge image
