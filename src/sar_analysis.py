@@ -7,11 +7,12 @@ import matplotlib.patches as mpatches
 from PIL import Image, ImageDraw, ImageSequence
 import ee
 
-from collection_utils import _get_aoi, _get_calibration_strip
+from collection_utils import _get_aoi, _get_calibration_strip, get_collection_s1
 from config import (START_DATE, END_DATE,
                     OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
                     VIS_BINARY_WATER_MASK, VIS_CHANGE_MAP, CHANGE_MAP_LABELS, VIS_SAR_VV,
-                    OTSU_MIN_WATER_PIXELS)
+                    OTSU_MIN_WATER_PIXELS, STORM_EVENTS)
+from gee_utils import init_gee
 
 
 # ------------------------------------------------------------ #
@@ -37,14 +38,53 @@ def _img_label(img: ee.Image) -> str:
 
 
 
-def _select_event_date_pair(col: ee.Collection, event_date: str, buffer_days: int = 3) -> tuple[ee.Image, ee.Image]:
-    """Return (pre_image, post_image) from col for a given event date"""
-    event_ee   = ee.Date(event_date)
-    pre_end    = event_ee.advance(-buffer_days, "day")
-    post_start = event_ee.advance(+buffer_days, "day")
+def _select_event_date_pair(col: ee.ImageCollection, event_date: str, min_buffer_days: int = 2,
+    max_pre_lag_days: int = 14, max_post_lag_days: int = 21, max_tide_diff_m: float = 0.15,) -> tuple[ee.Image, ee.Image]:
+    """Returns a tide-matched (pre, post) image pair around event_date
 
-    pre_img  = col.filterDate(START_DATE, pre_end).sort("system:time_start", False).first()
-    post_img = col.filterDate(post_start, END_DATE).sort("system:time_start", True).first()
+    Pre  = most recent image in [event − max_pre_lag_days, event − min_buffer_days]
+    Post = image in [event + min_buffer_days, event + max_post_lag_days] whose
+           tidal_height_m is closest to the pre image (tide-matched, not nearest in time)
+    """
+    event_ee = ee.Date(event_date)
+
+    # --- Pre: most recent image before the storm window ---
+    pre_col = col.filterDate(
+        event_ee.advance(-max_pre_lag_days, "day"),
+        event_ee.advance(-min_buffer_days,  "day"),
+    )
+    if pre_col.size().getInfo() == 0:
+        raise ValueError(f"No pre-event images for '{event_date}' in [event − {max_pre_lag_days}d, event − {min_buffer_days}d]"
+                         )
+    pre_img = pre_col.sort("system:time_start", False).first()
+    zos_pre = float(pre_img.get("tidal_height_m").getInfo())
+
+    # --- Post: image whose tidal height best matches pre ---
+    post_col = col.filterDate(
+        event_ee.advance(+min_buffer_days,   "day"),
+        event_ee.advance(+max_post_lag_days, "day"),
+    )
+    if post_col.size().getInfo() == 0:
+        raise ValueError(f"No post-event images for '{event_date}' in [event + {min_buffer_days}d, event + {max_post_lag_days}d]")
+    
+    post_img = (post_col
+                .map(lambda img: img.set("tide_diff", ee.Number(img.get("tidal_height_m")).subtract(zos_pre).abs()))
+                .sort("tide_diff")
+                .first()
+                )
+
+    # --- Check ---
+    pre_info  = pre_img.toDictionary( ["system:time_start", "tidal_height_m"]).getInfo()
+    post_info = post_img.toDictionary(["system:time_start", "tidal_height_m"]).getInfo()
+    pre_date  = pd.to_datetime(pre_info["system:time_start"],  unit="ms", utc=True).strftime("%Y-%m-%d")
+    post_date = pd.to_datetime(post_info["system:time_start"], unit="ms", utc=True).strftime("%Y-%m-%d")
+    pre_tide  = float(pre_info.get( "tidal_height_m", float("nan")))
+    post_tide = float(post_info.get("tidal_height_m", float("nan")))
+    print(f"Pre: {pre_date} ({pre_tide:+.2f} m) \nPost: {post_date} ({post_tide:+.2f} m)  \ndelta tide: {abs(post_tide - pre_tide):.2f} m")
+
+    if abs(post_tide - pre_tide) > max_tide_diff_m:
+        print(f"Diif in tide exceeds {max_tide_diff_m} m -> analyze change map carefully")
+
     return pre_img, post_img
 
 
@@ -156,20 +196,20 @@ def plot_otsu_comparison(img: ee.Image, scale: int = 40):
 
     plt.tight_layout()
     plt.show()
+
+
 def plot_single_image(img: ee.Image, title:str="GEE Image", save:bool=False):
     aoi = _get_aoi()
     
-    # 1. Ask Google Earth Engine what bands are in this image
+    # Get bands of image from gee 
     band_names = img.bandNames().getInfo()
-
-    # 2. Smart Auto-Detection for Defaults
    
     if "VV" in band_names:
         viz = VIS_SAR_VV
     elif "water" in band_names:
         viz = VIS_BINARY_WATER_MASK
     else:
-        # Absolute fallback just in case it's something unrecognized
+        # Only fallback case
         viz = {"min": 0, "max": 1, "palette": ["000000", "ffffff"]}
 
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -180,7 +220,7 @@ def plot_single_image(img: ee.Image, title:str="GEE Image", save:bool=False):
     else:
         plot_img = img
 
-    # 4. Plot using the auto-detected (or manually provided) viz settings
+
     thumb = _open_image_thumbnail(plot_img, aoi, viz)
     ax.imshow(thumb)
 
@@ -203,16 +243,25 @@ def plot_single_image(img: ee.Image, title:str="GEE Image", save:bool=False):
 #  4. Event Analyis
 # ------------------------------------------------------------ #
 
-def plot_sar_event(col:ee.Collection, event_date:str, buffer_days:int=3):
-    """Plot VV (dB) SAR images for the pre- and post-event acquisitions."""
+def plot_sar_event(col: ee.ImageCollection, event_date: str,
+                   min_buffer_days: int = 2, max_pre_lag_days: int = 14,
+                   max_post_lag_days: int = 21, max_tide_diff_m: float = 0.15):
+    """Plot VV (dB) SAR images for the pre- and post-event acquisitions"""
+    
     aoi = _get_aoi()
-    pre_img, post_img = _select_event_date_pair(col, event_date, buffer_days)
+    pre_img, post_img = _select_event_date_pair(
+        col, event_date,
+        min_buffer_days=min_buffer_days,
+        max_pre_lag_days=max_pre_lag_days,
+        max_post_lag_days=max_post_lag_days,
+        max_tide_diff_m=max_tide_diff_m,
+    )
 
     def vv_db(img):
         return img.select("VV").log10().multiply(10).clip(aoi)
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f"Sentinel-1 VV (dB) | Event: {event_date} (buffer ±{buffer_days} d)", fontsize=13)
+    fig.suptitle(f"Sentinel-1 VV (dB) of Event on: {event_date}", fontsize=13)
 
     for ax, img, label in zip(axes, [pre_img, post_img], ["PRE", "POST"]):
         thumb = _open_image_thumbnail(vv_db(img), aoi, VIS_SAR_VV)
@@ -224,10 +273,19 @@ def plot_sar_event(col:ee.Collection, event_date:str, buffer_days:int=3):
     plt.show()
 
 
-def plot_coastline_event(col:ee.Collection, event_date:str, buffer_days:int=3, mask_scale:int=40, redefined:bool=True):
+def plot_coastline_event(col: ee.ImageCollection, event_date: str,
+                         min_buffer_days: int = 2, max_pre_lag_days: int = 14,
+                         max_post_lag_days: int = 21, max_tide_diff_m: float = 0.15,
+                         mask_scale: int = 40, redefined: bool = True):
     """Plot water masks and a 4-class change map for an event"""
     aoi = _get_aoi()
-    pre_img, post_img = _select_event_date_pair(col, event_date, buffer_days)
+    pre_img, post_img = _select_event_date_pair(
+        col, event_date,
+        min_buffer_days=min_buffer_days,
+        max_pre_lag_days=max_pre_lag_days,
+        max_post_lag_days=max_post_lag_days,
+        max_tide_diff_m=max_tide_diff_m,
+    )
 
     pre_mask  = get_otsu_mask(pre_img, mask_scale, redefined=redefined)
     post_mask = get_otsu_mask(post_img, mask_scale, redefined=redefined)
@@ -323,3 +381,36 @@ def generate_sar_timeseries_gif(col:ee.ImageCollection, mask:bool, fps:int=2, wi
         duration=int(1000 / fps)
     )
     print("Finished")
+
+
+# ------------------------------------------------------------ #
+#  5. Pair-selection diagnostics
+# ------------------------------------------------------------ #
+
+def test_pair_selection():
+    """Test of _select_event_date_pair on the unfiltered S1 collection
+    Three scenarios are looked at:
+      A  default windows
+      B  wider post window — useful if S1B gap leaves few post candidates
+      C  storm config values from STORM_EVENTS
+    """
+    init_gee()
+    col = get_collection_s1()
+
+    for storm_id, val in STORM_EVENTS.items():
+        config = val["select"]
+        event_date = config["event_date"]
+
+        print(f"\nPair-selection test  storm={storm_id}  event={event_date}")
+
+        print("\nA - Defaults  (pre <= 14days, post <= 21days, min_buffer=2days)")
+        _select_event_date_pair(col, event_date)
+
+        print("\nB - Wider post window  (post <= 30days)")
+        _select_event_date_pair(col, event_date, max_post_lag_days=30)
+
+        print(f"\nC - Storm config  ({STORM_EVENTS[storm_id]['name']})")
+        _select_event_date_pair(col, event_date,
+                                min_buffer_days=config["min_buffer_days"],
+                                max_pre_lag_days=config["max_pre_lag_days"],
+                                max_post_lag_days=config["max_post_lag_days"])

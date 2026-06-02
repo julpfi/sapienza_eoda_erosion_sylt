@@ -6,18 +6,18 @@ import pandas as pd
 from gee_utils import init_gee
 import collection_utils
 from tidal_utils import filter_bin
-from config import (EVENT_DATE_ORKAN_ZEYNEP, BIN_LABELS)
+from config import (STORM_EVENTS, BIN_LABELS)
 import sar_analysis as sar
 import optical_analysis as opt
 
 
 
 # ----------- Initialization, get collection & tidal filter --------------------
-def get_col(collection:str="S1", tidal_bin:str=BIN_LABELS[2]):
+def get_col(collection:str="S1", tidal_bin:str|None=BIN_LABELS[2]):
     # 1. Initialize GEE
     print("\n--- Initialize GEE ---")
     init_gee()
-    
+
     # 2. Query type collection
     print(f"\n--- Querying {collection} Collection ---")
     if collection == "S1":
@@ -27,13 +27,13 @@ def get_col(collection:str="S1", tidal_bin:str=BIN_LABELS[2]):
     else:
         raise ValueError(f"Collection not defined: {collection}")
 
-    # 3. Tidal filter
-    print(f"\n--- Tidal Filter: {tidal_bin} ---")
-    col = filter_bin(col, tidal_bin)
+    # 3. Tidal filter (skipped if tidal_bin is None)
+    if tidal_bin is not None:
+        print(f"\n--- Tidal Filter: {tidal_bin} ---")
+        col = filter_bin(col, tidal_bin)
+        if col.size().getInfo() == 0:
+            raise AttributeError("No images remaining after tidal filtering.")
 
-    if col.size().getInfo() == 0: 
-        raise AttributeError("No images remaining after tidal filtering.")
-    
     return col
 
 
@@ -61,16 +61,19 @@ def sar_one_image(date:str, tidal_bin:str=BIN_LABELS[2]):
 
 
 
-def event_analyis_sar(event_date:str, tidal_bin:str=BIN_LABELS[2]):
-    s1_col = get_col(collection="S1", tidal_bin=tidal_bin)
+def event_analyis_sar(storm_id: str):
+    storm_config = STORM_EVENTS[storm_id]["select"]
+    s1_col = get_col(collection="S1", tidal_bin=None)
 
-    print(f"{s1_col.size().getInfo()} images pass {tidal_bin} filter")
-    if s1_col.size().getInfo() == 0: 
+    print(f"{s1_col.size().getInfo()} images pass")
+    if s1_col.size().getInfo() == 0:
         return
 
-    # Coastdetection and Change 
     print("\n--- Coastline / water mask + change map ---")
-    sar.plot_coastline_event(s1_col, event_date, buffer_days=1)
+    sar.plot_coastline_event(s1_col, storm_config["event_date"],
+                             min_buffer_days=storm_config["min_buffer_days"],
+                             max_pre_lag_days=storm_config["max_pre_lag_days"],
+                             max_post_lag_days=storm_config["max_post_lag_days"])
 
 
 def sar_timeseries(tidal_bin:str=BIN_LABELS[3]):
@@ -118,9 +121,13 @@ def opt_one_image(date:str, tidal_bin:str=BIN_LABELS[2]):
 
 
 if __name__ == "__main__":
-    # event_analyis_sar()
+    # STORM_ID from "sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"
+    STORM_ID = "sabine_2020"
+
+    event_analyis_sar(STORM_ID)
+    # sar.test_pair_selection()
     # sar_timeseries()
-    #sar_one_image("2019-06-27")
+    # sar_one_image("2019-06-27")
     # opt_one_image(date="2022-07-15")
     # sar_otsu_test("2019-06-27")                      # easy summer image
-    sar_otsu_test(tidal_bin="very_high")               # most recent storm/surge image
+    # sar_otsu_test(tidal_bin="very_high")             # most recent storm/surge image

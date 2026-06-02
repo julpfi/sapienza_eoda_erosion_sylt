@@ -1,6 +1,5 @@
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # GEE Config --------------------------------------------------
 GEE_PROJECT_ID = 'eoda-2026-ee-pfingsten'
@@ -184,13 +183,12 @@ GEO_JSON_SYLT_COMPLETE = {
 }
 
 # SAR post-processing ------------------------------------------
-# connectedPixelCount threshold: water pixels belonging to a connected region smaller
-# than this are reclassified as land (removes inland ponds, airport tarmac specular, etc.).
-# At native 10 m GRD resolution: 256 pixels ≈ 25 600 m² (≈ 160 m × 160 m square).
-# Increase if large specular surfaces (e.g. airport) survive; decrease to keep small inlets.
+# connectedPixelCount threshold: water pixels belonging to a connected region 
+# smaller than this are reclassified as land (removes inland ponds...)
 OTSU_MIN_WATER_PIXELS = 256
 
-# Output Paths (absolute, anchored to repo root so scripts can run from any cwd)
+# Output Paths (absolute from repo root on)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PLOTS      = str(_REPO_ROOT / "outputs" / "plots") + "/"
 OUTPUT_ANIMATIONS = str(_REPO_ROOT / "outputs" / "animations") + "/"
 
@@ -315,5 +313,42 @@ BIN_LABELS = ["very_low", "low_mid", "near_msl", "high_mid", "very_high"]
 
 
 
-# SAR Analyis 
-EVENT_DATE_ORKAN_ZEYNEP = "2022-02-19"
+# SAR Storm Event Analysis 
+
+# LKN.SH west-coast damage surveys: 
+# https://www.schleswig-holstein.de/DE/fachinhalte/K/kuestenschutz_fachplaene/2_Sylt/2_Grundlagen/2_Grundlagen
+
+STORM_EVENTS = {
+    "sabine_2020": {
+        "name": "Sabine",
+        "select": {
+            "event_date": "2020-02-10",
+            "min_buffer_days": 3,
+            "max_pre_lag_days": 14,
+            "max_post_lag_days": 21
+        },
+  # LKN survey 2020-02-13: dune breakage on ca. 12.5 km 
+
+# 23.12.2021 Failure of Sentinel-1B => Wider window for following storms  
+    },
+    "ylenia_zeynep_antonia_2022": {
+        "name": "Ylenia / Zeynep / Antonia (cluster)",
+        "select": {
+            "event_date": "2022-02-18",
+            "min_buffer_days": 5,   # Storm cluster 
+            "max_pre_lag_days": 21,
+            "max_post_lag_days": 28
+        },
+        # LKN survey 2022-02-20: dune breakage on ca. 9.7 km 
+    },
+    "zoltan_2023": {
+        "name": "Zoltan",
+        "select": {
+            "event_date": "2023-12-23",
+            "min_buffer_days": 2,
+            "max_pre_lag_days": 21,
+            "max_post_lag_days": 28
+        },
+        # LKN survey 2024-01-16: dune breakage on ca. 10.8 km
+    }
+}
