@@ -1,5 +1,5 @@
 import ee
-from config import GEE_PROJECT_ID, GEO_JSON_SYLT_COMPLETE
+from utils.config import GEE_PROJECT_ID, GEO_JSON_SYLT_COMPLETE
 
 
 

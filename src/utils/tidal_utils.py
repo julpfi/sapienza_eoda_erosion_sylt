@@ -5,7 +5,7 @@ import pandas as pd
 import copernicusmarine
 import ee
 
-from config import (
+from utils.config import (
     CMEMS_DATASET, CMEMS_VARIABLE,
     CMEMS_LON_MIN, CMEMS_LON_MAX, CMEMS_LAT_MIN, CMEMS_LAT_MAX,
     START_DATE, END_DATE,

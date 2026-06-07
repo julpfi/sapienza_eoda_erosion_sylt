@@ -28,19 +28,19 @@ def build_region_fc() -> ee.FeatureCollection:
     """
     features = []
 
-    # Iterating regions of interests
     for name, geojson in REGIONS_OF_INTEREST.items():
         if geojson is None:
             print(f"{name}: geometry not set -> skipped")
             continue
-        
-        features.append(ee.Feature(
-            ee.Geometry(geojson), 
-            {"name": name, "is_spit": name in SPIT_REGIONS}
-            ))  
-                
-    # Western coast aggregate 
-    agg_geom = ee.Geometry(WEST_COAST_AGGREGATE)
+        geom = ee.Geometry(geojson["features"][0]["geometry"])
+        features.append(ee.Feature(geom, {"name": name, "is_spit": name in SPIT_REGIONS}))
+
+    # Western coast aggregate (falls back to island AOI if not yet defined)
+    if WEST_COAST_AGGREGATE is not None:
+        agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
+    else:
+        print("WEST_COAST_AGGREGATE not set — using island AOI as aggregate")
+        agg_geom = _get_aoi()
     features.append(ee.Feature(agg_geom, {"name": "island_aggregate", "is_spit": False}))
     
     return ee.FeatureCollection(features)
@@ -68,7 +68,7 @@ def _reduce_area_km2(image:ee.Image, region_fc:ee.FeatureCollection, scale:int) 
 #  Entry point 1 - event erosion/accretion
 # ----------------------------------------------------------
 
-def quantify_event(storm_id:str, col:ee.ImageCollection=None, scale:int=QUANTIFICATION_SCALE) -> pd.DataFrame:
+def quantify_event(storm_id:str, col:ee.ImageCollection, scale:int=QUANTIFICATION_SCALE) -> pd.DataFrame:
     """
     Return region erosion and accretion areas for a storm event (given storm_id)
     Erosion and accretion are always reported separately (never netted)
@@ -81,10 +81,7 @@ def quantify_event(storm_id:str, col:ee.ImageCollection=None, scale:int=QUANTIFI
     # Get storm info from config.py
     event = STORM_EVENTS[storm_id]
     select = event["select"]
-    print(f"\nQuantify event: {event['name']}")
-
-    # Get collection (unfilterd for tidal)
-    col = get_collection_s1()
+    print(f"Quantify event: {event['name']}")
 
     # Get region of interests
     region_fc = build_region_fc()
@@ -137,7 +134,7 @@ def quantify_event(storm_id:str, col:ee.ImageCollection=None, scale:int=QUANTIFI
 
 
 def _print_event_table(df: pd.DataFrame, event_name:str):
-    print(f"Storm: {event_name}")
+    print(f"\nStorm: {event_name}")
     
     # Cerate temp display df
     display_df = pd.DataFrame({
@@ -146,7 +143,7 @@ def _print_event_table(df: pd.DataFrame, event_name:str):
         'Erosion %': df['erosion_pct'].map("{:.3f}%".format),
         'Accretion km^2': df['accretion_km2'].map("{:.4f}".format),
         'Accretion %': df['accretion_pct'].map("{:.3f}%".format),
-        'Spit': df['is_spit'].map({True: 'Y', False: 'N'})
+        'Spit': df['is_spit'].map({True: '+', False: ''})
     })
 
     print(display_df.to_string(index=False))

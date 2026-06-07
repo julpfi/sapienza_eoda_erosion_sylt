@@ -1,13 +1,13 @@
 import ee
 
-from config import (
+from utils.config import (
     GEO_JSON_SYLT_COMPLETE, GEO_JSON_SYLT_COASTLINE_BOUNDARY,
     START_DATE, END_DATE,
     S1_COLLECTION, S1_PASS, S1_ORBIT,
     S2_COLLECTION, MAX_CLOUD_PERC, OPTICAL_MONTHS,
 )
 
-from tidal_utils import append_ssh_height, append_ssh_bins
+from utils.tidal_utils import append_ssh_height, append_ssh_bins
 
 
 

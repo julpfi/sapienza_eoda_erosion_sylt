@@ -1,4 +1,5 @@
 import io
+import re
 import requests
 import numpy as np
 import pandas as pd
@@ -7,12 +8,12 @@ import matplotlib.patches as mpatches
 from PIL import Image, ImageDraw, ImageSequence
 import ee
 
-from collection_utils import _get_aoi, _get_calibration_strip, get_collection_s1
-from config import (START_DATE, END_DATE,
+from utils.collection_utils import _get_aoi, _get_calibration_strip, get_collection_s1
+from utils.config import (START_DATE, END_DATE,
                     OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
                     VIS_BINARY_WATER_MASK, VIS_CHANGE_MAP, CHANGE_MAP_LABELS, VIS_SAR_VV,
                     OTSU_MIN_WATER_PIXELS, STORM_EVENTS)
-from gee_utils import init_gee
+from utils.gee_utils import init_gee
 
 
 # ------------------------------------------------------------ #
@@ -80,10 +81,10 @@ def _select_event_date_pair(col: ee.ImageCollection, event_date: str, min_buffer
     post_date = pd.to_datetime(post_info["system:time_start"], unit="ms", utc=True).strftime("%Y-%m-%d")
     pre_tide  = float(pre_info.get( "tidal_height_m", float("nan")))
     post_tide = float(post_info.get("tidal_height_m", float("nan")))
-    print(f"Pre: {pre_date} ({pre_tide:+.2f} m) \nPost: {post_date} ({post_tide:+.2f} m)  \ndelta tide: {abs(post_tide - pre_tide):.2f} m")
+    print(f"Pre: {pre_date} ({pre_tide:+.2f} m) \nPost: {post_date} ({post_tide:+.2f} m)  \nDelta tide: {abs(post_tide - pre_tide):.2f} m")
 
     if abs(post_tide - pre_tide) > max_tide_diff_m:
-        print(f"Diif in tide exceeds {max_tide_diff_m} m -> analyze change map carefully")
+        print(f"Diff in tide exceeds {max_tide_diff_m} m -> analyze change map carefully")
 
     return pre_img, post_img
 
@@ -233,7 +234,8 @@ def plot_single_image(img: ee.Image, title:str="GEE Image", save:bool=False):
     ax.axis("off")
     plt.tight_layout()
     if save:
-        full_path = OUTPUT_PLOTS + "f{title}" + ".png"
+        safe_title = re.sub(r"[^\w\-]", "_", title)
+        full_path  = f"{OUTPUT_PLOTS}{safe_title}.png"
         plt.savefig(full_path, dpi=150, bbox_inches="tight")
         print(f"Saved to {full_path}")
     plt.show()

@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw, ImageSequence
 import ee
 
-from collection_utils import _get_aoi
-from config import (
+from utils.collection_utils import _get_aoi
+from utils.config import (
     START_DATE, END_DATE,
     OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
     VIS_S2_TRUE_COLOR, VIS_S2_NDWI,

@@ -3,12 +3,13 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from gee_utils import init_gee
-import collection_utils
-from tidal_utils import filter_bin
-from config import (STORM_EVENTS, BIN_LABELS)
-import sar_analysis as sar
-import optical_analysis as opt
+from utils.gee_utils import init_gee
+from utils import collection_utils
+from utils.tidal_utils import filter_bin
+from utils.config import STORM_EVENTS, BIN_LABELS
+from analysis import sar_analysis as sar
+from analysis import optical_analysis as opt
+from analysis import quantification as quant
 
 
 
@@ -61,19 +62,20 @@ def sar_one_image(date:str, tidal_bin:str=BIN_LABELS[2]):
 
 
 
-def event_analyis_sar(storm_id: str):
+def sar_event_analysis(storm_id:str, save:bool=False):
     storm_config = STORM_EVENTS[storm_id]["select"]
     s1_col = get_col(collection="S1", tidal_bin=None)
 
-    print(f"{s1_col.size().getInfo()} images pass")
-    if s1_col.size().getInfo() == 0:
-        return
-
-    print("\n--- Coastline / water mask + change map ---")
+    print("\n--- Change map ---")
     sar.plot_coastline_event(s1_col, storm_config["event_date"],
                              min_buffer_days=storm_config["min_buffer_days"],
                              max_pre_lag_days=storm_config["max_pre_lag_days"],
                              max_post_lag_days=storm_config["max_post_lag_days"])
+
+    print("\n--- Area quantification ---")
+    df = quant.quantify_event(storm_id, col=s1_col)
+    quant.plot_event_bars(df, storm_id, save=save)
+
 
 
 def sar_timeseries(tidal_bin:str=BIN_LABELS[3]):
@@ -122,9 +124,9 @@ def opt_one_image(date:str, tidal_bin:str=BIN_LABELS[2]):
 
 if __name__ == "__main__":
     # STORM_ID from "sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"
-    STORM_ID = "sabine_2020"
+    STORM_ID = "ylenia_zeynep_antonia_2022"
 
-    event_analyis_sar(STORM_ID)
+    sar_event_analysis(STORM_ID)
     # sar.test_pair_selection()
     # sar_timeseries()
     # sar_one_image("2019-06-27")
