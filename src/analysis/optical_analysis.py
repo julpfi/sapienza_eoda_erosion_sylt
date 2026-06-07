@@ -14,7 +14,7 @@ from utils.config import (
 
 
 # ------------------------------------------------------------ #
-#  1. Technical Helper Methods  (mirror sar_analysis.py)
+#  1. Technical Helper Methods  (mirror sar_core.py)
 # ------------------------------------------------------------ #
 
 def _open_image_thumbnail(img: ee.Image, aoi: ee.Geometry, viz: dict) -> Image.Image:
