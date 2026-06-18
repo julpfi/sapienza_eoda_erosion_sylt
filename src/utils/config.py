@@ -90,9 +90,11 @@ OTSU_MIN_WATER_PIXELS = 256
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 OUTPUT_PLOTS      = str(_REPO_ROOT / "outputs" / "plots") + "/"
 OUTPUT_ANIMATIONS = str(_REPO_ROOT / "outputs" / "animations") + "/"
+OUTPUT_DATA       = str(_REPO_ROOT / "outputs" / "data") + "/"
 
 os.makedirs(OUTPUT_PLOTS, exist_ok=True)
 os.makedirs(OUTPUT_ANIMATIONS, exist_ok=True)
+os.makedirs(OUTPUT_DATA, exist_ok=True)
 
 
 # Date range --------------------------------------------------

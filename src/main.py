@@ -2,7 +2,7 @@ import ee
 from utils.gee_utils import init_gee
 from utils import collection_utils
 from utils.tidal_utils import filter_bin
-from utils.config import STORM_EVENTS, BIN_LABELS
+from utils.config import STORM_EVENTS, BIN_LABELS, OUTPUT_DATA
 from analysis import sar_core as sar
 from analysis import optical_analysis as opt
 from analysis import sar_event_analysis as event
@@ -56,19 +56,27 @@ def sar_event_analysis(storm_id: str, save: bool = False):
 def seasonal_quantification(tidal_bin: str = "near_msl", save: bool = False):
     col = get_col(collection="S1", tidal_bin=tidal_bin)
 
+    cache_land = f"{OUTPUT_DATA}land_area.csv"
+    cache_change = f"{OUTPUT_DATA}change_timeseries.csv"
+
     print("\n--- Land area timeseries ---")
-    df_land = ts.quantify_timeseries(col)
+    df_land_raw = ts.quantify_timeseries(col, cache_csv=cache_land)
+    df_land     = ts.filter_outlier_dates(df_land_raw)
+    bad_dates   = set(df_land_raw["date"]) - set(df_land["date"])
     ts.plot_timeseries(df_land, save=save)
+    ts.plot_land_area_monthly_means(df_land, save=save)
+    ts.plot_monthly_land_area_cycle(df_land, save=save)
 
     print("\n--- Consecutive-pair change timeseries ---")
-    df_change = ts.quantify_change_timeseries(col)
+    df_change = ts.quantify_change_timeseries(col, cache_csv=cache_change)
+    df_change = ts.filter_outlier_dates_change(df_change, bad_dates)
     ts.plot_change_timeseries(df_change, save=save)
+    ts.plot_erosion_by_month(df_change, save=save)
 
 
-def sar_timeseries(tidal_bin: str = BIN_LABELS[3]):
-    s1_col       = get_col(collection="S1", tidal_bin=tidal_bin)
-    s1_col_masks = s1_col.map(lambda img: sar.get_otsu_mask(img, redefined=True))
-    ts.generate_sar_timeseries_gif(col=s1_col_masks, mask=True)
+def sar_timeseries(tidal_bin: str = "near_msl"):
+    s1_col = get_col(collection="S1", tidal_bin=tidal_bin)
+    ts.generate_sar_timeseries_gif(col=s1_col, mask=True)
 
 
 # ---------------------- SAR Otsu diagnostics -------------------------------
@@ -105,14 +113,24 @@ def opt_one_image(date: str, tidal_bin: str = BIN_LABELS[2]):
 
 
 if __name__ == "__main__":
-    # STORM_ID from "sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"
-    STORM_ID = "ylenia_zeynep_antonia_2022"
-
-    sar_event_analysis(STORM_ID)
-    # seasonal_quantification()
-    # event.test_pair_selection()
-    # sar_timeseries()
+    # ---------- GENERAL ----------
     # sar_one_image("2019-06-27")
     # opt_one_image(date="2022-07-15")
     # sar_otsu_test("2019-06-27")
     # sar_otsu_test(tidal_bin="very_high")
+
+
+    # ------- EVENT -----------
+    # STORM_ID from "sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"
+    STORM_ID = "ylenia_zeynep_antonia_2022"
+    # sar_event_analysis(STORM_ID)
+    # event.test_pair_selection()
+    
+
+    # ---------- TIMESERIES ------------
+    seasonal_quantification(tidal_bin="near_msl", save=True)
+    sar_timeseries(tidal_bin="near_msl")
+   
+
+    
+
