@@ -148,7 +148,6 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
     if cache_csv and os.path.exists(cache_csv):
         print(f"Loading land-area timeseries from cache: {cache_csv}")
         df = (pd.read_csv(cache_csv).assign(date=lambda d: pd.to_datetime(d["date"])))
-        _print_timeseries_summary(df)
         return df
 
     # Cache-Miss -> Building timeseries
@@ -210,7 +209,6 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
         df.to_csv(cache_csv, index=False)
         print(f"Land-area timeseries cached to {cache_csv}")
 
-    _print_timeseries_summary(df)
     return df
 
 
@@ -255,7 +253,7 @@ def filter_outlier_dates_change(change_df: pd.DataFrame, bad_dates) -> pd.DataFr
     return cleaned
 
 
-def _print_timeseries_summary(df: pd.DataFrame):
+def print_timeseries_summary(df: pd.DataFrame):
     print("\nLand-area summary per region (near_msl bin):\n")
     amplitudes = {}
     for region, grp in df.groupby("region"):
@@ -266,8 +264,8 @@ def _print_timeseries_summary(df: pd.DataFrame):
         min_val = land.min()
         max_val = land.max()
         amp = max_val - min_val
-        date_min  = grp.loc[land.idxmin(), "date"].strftime("%Y-%m-%d")
-        date_max  = grp.loc[land.idxmax(), "date"].strftime("%Y-%m-%d")
+        date_min = grp.loc[land.idxmin(), "date"].strftime("%Y-%m-%d")
+        date_max = grp.loc[land.idxmax(), "date"].strftime("%Y-%m-%d")
         amplitudes[region] = amp
 
         # Linear trend: decimal year → land_km2
@@ -340,7 +338,6 @@ def quantify_change_timeseries(col: ee.ImageCollection,
                   date_pre = lambda d: pd.to_datetime(d["date_pre"]),
                   date_post = lambda d: pd.to_datetime(d["date_post"]),
               ))
-        _print_change_summary(df)
         return df
 
     # Cache-Miss -> Building change timeseries
@@ -406,12 +403,11 @@ def quantify_change_timeseries(col: ee.ImageCollection,
         df.to_csv(cache_csv, index=False)
         print(f"Change timeseries cached to {cache_csv}")
 
-    _print_change_summary(df)
     return df
 
 
 
-def _print_change_summary(df: pd.DataFrame):
+def print_change_summary(df: pd.DataFrame):
     print("\nChange timeseries summary per region (near_msl bin):\n")
     peak_erosions = {}
     for region, grp in df.groupby("region"):

@@ -63,13 +63,15 @@ def seasonal_quantification(tidal_bin: str = "near_msl", save: bool = False):
     df_land_raw = ts.quantify_timeseries(col, cache_csv=cache_land)
     df_land     = ts.filter_outlier_dates(df_land_raw)
     bad_dates   = set(df_land_raw["date"]) - set(df_land["date"])
+    ts.print_timeseries_summary(df_land)
     ts.plot_timeseries(df_land, save=save)
     ts.plot_land_area_monthly_means(df_land, save=save)
     ts.plot_monthly_land_area_cycle(df_land, save=save)
 
     print("\n--- Consecutive-pair change timeseries ---")
-    df_change = ts.quantify_change_timeseries(col, cache_csv=cache_change)
-    df_change = ts.filter_outlier_dates_change(df_change, bad_dates)
+    df_change_raw = ts.quantify_change_timeseries(col, cache_csv=cache_change)
+    df_change     = ts.filter_outlier_dates_change(df_change_raw, bad_dates)
+    ts.print_change_summary(df_change)
     ts.plot_change_timeseries(df_change, save=save)
     ts.plot_erosion_by_month(df_change, save=save)
 
