@@ -74,6 +74,12 @@ def generate_sar_timeseries_gif(col: ee.ImageCollection, mask: bool,
     If the collection has more than max_frames images -> even subsample so the GIF stays clean
     """
     aoi = _get_aoi()
+
+    # Pre-apply Otsu before the video pipeline — nesting it inside the render
+    # map causes a 400 from getVideoThumbURL (computation graph too complex).
+    if mask:
+        col = col.map(get_otsu_mask)
+
     times = sorted(col.aggregate_array("system:time_start").getInfo())
     dates = [pd.to_datetime(t, unit="ms", utc=True).strftime("%Y-%m-%d") for t in times]
 
@@ -88,7 +94,7 @@ def generate_sar_timeseries_gif(col: ee.ImageCollection, mask: bool,
 
     def prep_for_gif(img):
         if mask:
-            return get_otsu_mask(img).select("water").visualize(**VIS_BINARY_WATER_MASK)
+            return img.select("water").visualize(**VIS_BINARY_WATER_MASK)
         vv_db = img.select("VV").log10().multiply(10)
         return vv_db.visualize(**VIS_SAR_VV)
 
@@ -206,6 +212,47 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
 
     _print_timeseries_summary(df)
     return df
+
+
+def filter_outlier_dates(df:pd.DataFrame, k:float=2.0) -> pd.DataFrame:
+    """
+    Drop dates where island_aggregate land area > Q3 + k*IQR 
+        Oonly upper bound as storms increas misclasified water to land (due to higher backscatter)
+    Filters at the date level using island_aggregate as anchor 
+    All regions from a flagged date are dropped together
+    """
+    agg = df[df["region"] == "island_aggregate"][["date", "land_km2"]].copy()
+    if agg.empty:
+        print("filter_outlier_dates: 'island_aggregate' not found, skipping.")
+        return df
+
+    q1, q3 = agg["land_km2"].quantile(0.25), agg["land_km2"].quantile(0.75)
+    iqr = q3 - q1
+    upper = q3 + k * iqr
+
+    bad_dates = agg.loc[agg["land_km2"] > upper, "date"]
+    if bad_dates.empty:
+        print(f"filter_outlier_dates: no outliers found (upper fence = {upper:.3f} km2).")
+        return df
+
+    print(f"\nOutlier filter (island_aggregate upper fence = Q3 + {k}×IQR = {upper:.3f} km2):")
+    for d in sorted(bad_dates):
+        val = agg.loc[agg["date"] == d, "land_km2"].values[0]
+        print(f"  dropping {d.strftime('%Y-%m-%d')}  island_aggregate={val:.3f} km2")
+
+    cleaned = df[~df["date"].isin(bad_dates)].reset_index(drop=True)
+    print(f"\t{len(bad_dates)} date(s) removed, {cleaned['date'].nunique()} remaining.\n")
+    return cleaned
+
+
+def filter_outlier_dates_change(change_df: pd.DataFrame, bad_dates) -> pd.DataFrame:
+    """Drop change pairs where either endpoint falls on a flagged date"""
+    mask = (change_df["date_pre"].isin(bad_dates) |
+               change_df["date_post"].isin(bad_dates))
+    cleaned = change_df[~mask].reset_index(drop=True)
+    if mask.any():
+        print(f"filter_outlier_dates_change: dropped {mask.sum()} pair(s) touching outlier dates.")
+    return cleaned
 
 
 def _print_timeseries_summary(df: pd.DataFrame):
