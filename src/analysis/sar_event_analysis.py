@@ -77,7 +77,8 @@ def select_event_pair(col: ee.ImageCollection, event_date: str,
 #  Plotting
 # --------------------------------------------------------
 
-def plot_sar_event(pre_img: ee.Image, post_img: ee.Image, event_date: str):
+def plot_sar_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
+                   save: bool = False):
     """Plot VV (dB) SAR images for the pre- and post-event acquisitions."""
     aoi = _get_aoi()
 
@@ -93,12 +94,24 @@ def plot_sar_event(pre_img: ee.Image, post_img: ee.Image, event_date: str):
         ax.axis("off")
 
     plt.tight_layout()
+
+    if save:
+        safe = re.sub(r"[^\w\-]", "_", event_date)
+        path = f"{OUTPUT_PLOTS}sar_event_{safe}.png"
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        print(f"Saved to {path}")
+
     plt.show()
 
 
 def plot_coastline_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
                          mask_scale: int = 40, redefined: bool = True):
-    """Plot water masks and a 4-class change map for an event."""
+    """Plot water masks and a 4-class change map for an event.
+
+    The change-map image is fetched as a thumbnail (fixed pixel budget), so
+    mask_scale only affects classification accuracy — the visual appearance
+    does not change noticeably.  The scale mainly matters for quantify_event.
+    """
     aoi       = _get_aoi()
     pre_mask  = get_otsu_mask(pre_img,  mask_scale, redefined=redefined)
     post_mask = get_otsu_mask(post_img, mask_scale, redefined=redefined)
@@ -230,8 +243,14 @@ def plot_event_bars(df: pd.DataFrame, storm_id: str, save: bool = False):
 # --------------------------------------------------------
 
 def run_event_analysis(storm_id: str, col: ee.ImageCollection,
-                       save: bool = False) -> pd.DataFrame:
-    """Full event analysis: select pair once, then plot and quantify."""
+                       save: bool = False,
+                       event_scale: int = 20) -> pd.DataFrame:
+    """Full event analysis: select pair once, then plot and quantify.
+
+    event_scale controls both the Otsu mask resolution and the reduceRegions
+    area calculation.  Default 20 m (finer than the 40 m timeseries scale)
+    because storm retreat of 10–30 m is sub-pixel at 40 m.
+    """
     if storm_id not in STORM_EVENTS:
         raise ValueError(f"Unknown storm_id: {storm_id}")
 
@@ -244,11 +263,15 @@ def run_event_analysis(storm_id: str, col: ee.ImageCollection,
         max_post_lag_days= select["max_post_lag_days"],
     )
 
+    print("\n--- SAR imagery ---")
+    plot_sar_event(pre_img, post_img, select["event_date"], save=save)
+
     print("\n--- Change map ---")
-    plot_coastline_event(pre_img, post_img, select["event_date"])
+    plot_coastline_event(pre_img, post_img, select["event_date"],
+                         mask_scale=event_scale)
 
     print("\n--- Area quantification ---")
-    df = quantify_event(storm_id, pre_img, post_img)
+    df = quantify_event(storm_id, pre_img, post_img, scale=event_scale)
     plot_event_bars(df, storm_id, save=save)
     return df
 
@@ -256,6 +279,47 @@ def run_event_analysis(storm_id: str, col: ee.ImageCollection,
 # --------------------------------------------------------
 #  Diagnostics
 # --------------------------------------------------------
+
+def compare_scales_sabine():
+    """Run Sabine at 40 m, 20 m, and 10 m and print erosion/accretion side by side.
+
+    Use this to decide whether finer resolution sharpens the signal enough to
+    justify the extra GEE compute time.  Run once interactively; no plots.
+    """
+    init_gee()
+    col = get_collection_s1()
+    storm_id = "sabine_2020"
+    select   = STORM_EVENTS[storm_id]["select"]
+
+    pre_img, post_img = select_event_pair(
+        col,
+        event_date       = select["event_date"],
+        min_buffer_days  = select["min_buffer_days"],
+        max_pre_lag_days = select["max_pre_lag_days"],
+        max_post_lag_days= select["max_post_lag_days"],
+    )
+
+    results = {}
+    for scale in (40, 20, 10):
+        print(f"\n=== scale = {scale} m ===")
+        results[scale] = quantify_event(storm_id, pre_img, post_img, scale=scale)
+
+    # Side-by-side comparison
+    regions = results[40]["region"].tolist()
+    header  = f"{'Region':<20}" + "".join(f"  {s}m eros  {s}m accr" for s in (40, 20, 10))
+    print("\n\n" + "=" * len(header))
+    print("Sabine: erosion/accretion km² by scale")
+    print(header)
+    print("-" * len(header))
+    for r in regions:
+        row = f"{r:<20}"
+        for scale in (40, 20, 10):
+            df  = results[scale]
+            rec = df[df["region"] == r].iloc[0]
+            row += f"  {rec['erosion_km2']:>8.4f}  {rec['accretion_km2']:>8.4f}"
+        print(row)
+    print("=" * len(header))
+
 
 def test_pair_selection():
     """Test select_event_pair on the unfiltered S1 collection across all configured storms.

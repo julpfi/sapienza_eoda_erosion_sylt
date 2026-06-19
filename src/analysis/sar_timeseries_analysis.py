@@ -44,8 +44,9 @@ def build_region_fc() -> ee.FeatureCollection:
         features.append(ee.Feature(geom, {"name": name, "is_spit": name in SPIT_REGIONS}))
 
     if WEST_COAST_AGGREGATE is not None:
-        agg_geom = ee.Geometry(REGIONS_OF_INTEREST["features"][0]["geometry"])
-
+        agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
+    else:
+        agg_geom = _get_aoi()
 
     features.append(ee.Feature(agg_geom, {"name": "island_aggregate", "is_spit": False}))
     return ee.FeatureCollection(features)
@@ -69,65 +70,62 @@ def _reduce_area_km2(image: ee.Image, region_fc: ee.FeatureCollection, scale: in
 
 def generate_sar_timeseries_gif(col: ee.ImageCollection, mask: bool,
                                 fps: int = 2, width: int = 600, max_frames: int = 40):
-    """
-    Render a GIF of the SAR timeseries (raw VV or water mask)
-    If the collection has more than max_frames images -> even subsample so the GIF stays clean
+    """Render a GIF of the SAR timeseries (raw VV or water mask).
+
+    Frames are downloaded individually via getThumbURL rather than
+    getVideoThumbURL.  The video endpoint compiles all frames into one
+    computation graph, which overflows GEE's limit when Otsu (focal median +
+    histogram + threshold + focal mode + connectedPixelCount) is mapped over
+    40 images.  Per-frame thumbnail calls keep each request to one image.
     """
     aoi = _get_aoi()
-
-    # Pre-apply Otsu before the video pipeline — nesting it inside the render
-    # map causes a 400 from getVideoThumbURL (computation graph too complex).
-    if mask:
-        col = col.map(get_otsu_mask)
 
     times = sorted(col.aggregate_array("system:time_start").getInfo())
     dates = [pd.to_datetime(t, unit="ms", utc=True).strftime("%Y-%m-%d") for t in times]
 
-    # Subsample if collection is larger than max_frames
     n_total = len(times)
     if n_total > max_frames:
         keep_idx = np.round(np.linspace(0, n_total - 1, max_frames)).astype(int).tolist()
         img_list  = col.sort("system:time_start").toList(n_total)
         col = ee.ImageCollection(ee.List(keep_idx).map(lambda i: img_list.get(i)))
         dates = [dates[i] for i in keep_idx]
-        print(f"Subsampled GIF: {n_total} -> {max_frames} frames")
+        print(f"Subsampled GIF: {n_total} -> {len(dates)} frames")
 
-    def prep_for_gif(img):
+    if mask:
+        col = col.map(get_otsu_mask)
+
+    def prep(img):
         if mask:
             return img.select("water").visualize(**VIS_BINARY_WATER_MASK)
         vv_db = img.select("VV").log10().multiply(10)
         return vv_db.visualize(**VIS_SAR_VV)
 
-    col_prepared = col.map(prep_for_gif)
+    col_prepared = col.map(prep)
+    img_list_ee  = col_prepared.sort("system:time_start").toList(len(dates))
 
-    print("Rendering and downloading raw GIF...")
-    gif_url = col_prepared.getVideoThumbURL({
-        "dimensions": width,
-        "region": aoi,
-        "framesPerSecond": fps,
-        "crs": "EPSG:3857",
-    })
-    response = requests.get(gif_url)
-    response.raise_for_status()
-
-    raw_gif = Image.open(io.BytesIO(response.content))
-    frames  = []
-
-    for i, frame in enumerate(ImageSequence.Iterator(raw_gif)):
-        frame = frame.convert("RGBA")
-        draw = ImageDraw.Draw(frame)
-        date_text = dates[i] if i < len(dates) else "Unknown"
-        x, y = 15, 15
+    print(f"Downloading {len(dates)} frames individually (1 request/frame)...")
+    frames = []
+    for i, date in enumerate(dates):
+        img  = ee.Image(img_list_ee.get(i))
+        url  = img.getThumbURL({"region": aoi, "dimensions": width})
+        resp = requests.get(url)
+        resp.raise_for_status()
+        frame = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+        draw  = ImageDraw.Draw(frame)
+        x, y  = 15, 15
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            draw.text((x + dx, y + dy), date_text, fill="black")
-        draw.text((x, y), date_text, fill="white")
+            draw.text((x + dx, y + dy), date, fill="black")
+        draw.text((x, y), date, fill="white")
         frames.append(frame)
+        if (i + 1) % 10 == 0 or (i + 1) == len(dates):
+            print(f"  {i + 1}/{len(dates)}")
 
-    mode_tag = "mask" if mask else "vv"
+    mode_tag    = "mask" if mask else "vv"
     output_path = f"{OUTPUT_ANIMATIONS}timeseries_sar_{mode_tag}.gif"
 
     print(f"Saving GIF ({len(frames)} frames) to {output_path}...")
-    frames[0].save(output_path, save_all=True, append_images=frames[1:], loop=0, duration=int(1000/fps))
+    frames[0].save(output_path, save_all=True, append_images=frames[1:],
+                   loop=0, duration=int(1000 / fps))
     print("Finished")
 
 
