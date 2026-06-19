@@ -322,7 +322,7 @@ def compare_scales_sabine():
 
 
 def test_pair_selection():
-    """Test select_event_pair on the unfiltered S1 collection across all configured storms.
+    """Test select_event_pair on the unfiltered S1 collection across all configured storms
 
     Three scenarios per storm:
       A  default windows
