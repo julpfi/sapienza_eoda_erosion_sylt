@@ -48,7 +48,7 @@ def sar_one_image(date: str, tidal_bin: str = BIN_LABELS[2]):
     sar.plot_single_image(img=day_col.first(), title=f"Sentinel-1 overpass on {date}")
 
 
-def sar_event_analysis(storm_id: str, save: bool = False):
+def sar_event_analysis(storm_id:str, save:bool=False):
     s1_col = get_col(collection="S1", tidal_bin=None)
     event.run_event_analysis(storm_id, s1_col, save=save)
 
@@ -114,6 +114,15 @@ def opt_one_image(date: str, tidal_bin: str = BIN_LABELS[2]):
     opt.plot_single_image_s2(col, date, ndwi=True)
 
 
+def opt_availability(save: bool = False):
+    """S2 availability statistics"""
+    print("\n--- Initialize GEE ---")
+    init_gee()
+    print("\n--- S2 Availability Assessment ---")
+    # No col before needed -> all handeled inside due to grouping of statisitcs
+    opt.assess_s2_availability(cloud_thresholds=(20, 40), save=save)
+
+
 if __name__ == "__main__":
     # ---------- GENERAL ----------
     # sar_one_image("2019-06-27")
@@ -123,15 +132,20 @@ if __name__ == "__main__":
 
 
     # ------- EVENT -----------
-    # STORM_ID from "sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"
-    STORM_ID = "ylenia_zeynep_antonia_2022"
-    # sar_event_analysis(STORM_ID)
-    # event.test_pair_selection()
+    # STORM_ID from 
+    for storm in ["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
+        #STORM_ID = "sabine_2020"
+        sar_event_analysis(storm, save=True)
+    
+    event.test_pair_selection()
     
 
     # ---------- TIMESERIES ------------
-    seasonal_quantification(tidal_bin="near_msl", save=True)
-    sar_timeseries(tidal_bin="near_msl")
+    #seasonal_quantification(tidal_bin="near_msl", save=True)
+    #sar_timeseries(tidal_bin="near_msl")
+
+    # ------------ OPTICAL ----------
+    #opt_availability(save=True)
    
 
     
