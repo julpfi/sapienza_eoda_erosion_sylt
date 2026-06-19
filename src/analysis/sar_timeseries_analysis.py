@@ -15,12 +15,11 @@ from utils.config import (
     QUANTIFICATION_SCALE, REGIONS_OF_INTEREST, WEST_COAST_AGGREGATE, SPIT_REGIONS,
     OUTPUT_PLOTS, OUTPUT_ANIMATIONS, OUTPUT_DATA,
     VIS_CHANGE_MAP, VIS_BINARY_WATER_MASK, VIS_SAR_VV,
+    STORM_MONTHS, RECOVERY_MONTHS, OUTLIER_K,
 )
 from utils.tidal_utils import filter_bin
 from analysis.sar_core import get_otsu_mask
 
-STORM_MONTHS = frozenset({10, 11, 12, 1, 2, 3})
-CALM_MONTHS  = frozenset({4, 5, 6, 7, 8, 9})
 _MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
                 "Jul","Aug","Sep","Oct","Nov","Dec"]
 
@@ -210,35 +209,40 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
     return df
 
 
-def filter_outlier_dates(df:pd.DataFrame, k:float=2.0) -> pd.DataFrame:
+def filter_outlier_dates(df: pd.DataFrame, k: float = OUTLIER_K) -> tuple[pd.DataFrame, set]:
     """
-    Drop dates where island_aggregate land area > Q3 + k*IQR 
-        Oonly upper bound as storms increas misclasified water to land (due to higher backscatter)
-    Filters at the date level using island_aggregate as anchor 
-    All regions from a flagged date are dropped together
+    Per-region upper Tukey fence: Q3 + k*IQR on each region's own land_km2.
+    Upper-only — rough-water false-land bias is one-sided.
+    Union of flagged dates across all regions -> bad_dates.
+    Drop at the date level so the panel stays rectangular.
+    Returns (cleaned_df, bad_dates).
     """
-    agg = df[df["region"] == "island_aggregate"][["date", "land_km2"]].copy()
-    if agg.empty:
-        print("filter_outlier_dates: 'island_aggregate' not found, skipping.")
-        return df
+    bad_dates: set = set()
+    date_triggers: dict = {}
 
-    q1, q3 = agg["land_km2"].quantile(0.25), agg["land_km2"].quantile(0.75)
-    iqr = q3 - q1
-    upper = q3 + k * iqr
+    for region, grp in df.groupby("region"):
+        land = grp.set_index("date")["land_km2"]
+        q1, q3 = land.quantile(0.25), land.quantile(0.75)
+        iqr = q3 - q1
+        upper = q3 + k * iqr
+        print(f"  {region}: upper fence = Q3 + {k}×IQR = {upper:.3f} km2")
 
-    bad_dates = agg.loc[agg["land_km2"] > upper, "date"]
-    if bad_dates.empty:
-        print(f"filter_outlier_dates: no outliers found (upper fence = {upper:.3f} km2).")
-        return df
+        for date, val in land[land > upper].items():
+            bad_dates.add(date)
+            date_triggers.setdefault(date, []).append((region, val))
 
-    print(f"\nOutlier filter (island_aggregate upper fence = Q3 + {k}×IQR = {upper:.3f} km2):")
+    if not bad_dates:
+        print("filter_outlier_dates: no outliers found.")
+        return df, bad_dates
+
+    print(f"\nDropping {len(bad_dates)} date(s):")
     for d in sorted(bad_dates):
-        val = agg.loc[agg["date"] == d, "land_km2"].values[0]
-        print(f"  dropping {d.strftime('%Y-%m-%d')}  island_aggregate={val:.3f} km2")
+        triggers = ", ".join(f"{r}={v:.3f}" for r, v in date_triggers[d])
+        print(f"  {d.strftime('%Y-%m-%d')}  triggered by: {triggers}")
 
     cleaned = df[~df["date"].isin(bad_dates)].reset_index(drop=True)
     print(f"\t{len(bad_dates)} date(s) removed, {cleaned['date'].nunique()} remaining.\n")
-    return cleaned
+    return cleaned, bad_dates
 
 
 def filter_outlier_dates_change(change_df: pd.DataFrame, bad_dates) -> pd.DataFrame:
@@ -276,16 +280,16 @@ def print_timeseries_summary(df: pd.DataFrame):
         # Seasonal split
         month = grp["date"].dt.month
         storm_mean = land[month.isin(STORM_MONTHS)].mean()
-        calm_mean = land[month.isin(CALM_MONTHS)].mean()
-        seas_diff = calm_mean - storm_mean
+        recovery_mean = land[month.isin(RECOVERY_MONTHS)].mean()
+        seas_diff = recovery_mean - storm_mean
 
         print(f"  {region}  (n={n})")
         print(f"    mean={land.mean():.3f} km2")
         print(f"    min={min_val:.3f} km2 ({date_min})  "
               f"max={max_val:.3f} km2 ({date_max})  amplitude={amp:.3f} km2")
         print(f"    trend: {trend}")
-        print(f"    storm Oct–Mar: {storm_mean:.3f} km2  |  "
-              f"calm Apr–Sep: {calm_mean:.3f} km2  |  seasonal diff={seas_diff:+.3f} km2")
+        print(f"    storm Nov–Apr: {storm_mean:.3f} km2  |  "
+              f"recovery May–Oct: {recovery_mean:.3f} km2  |  seasonal diff={seas_diff:+.3f} km2")
         print()
 
     ranked = sorted(amplitudes, key=amplitudes.__getitem__, reverse=True)
@@ -423,7 +427,7 @@ def print_change_summary(df: pd.DataFrame):
 
         post_month = grp["date_post"].dt.month
         storm_erosion = grp.loc[post_month.isin(STORM_MONTHS), "erosion_km2"].sum()
-        calm_erosion = grp.loc[post_month.isin(CALM_MONTHS),  "erosion_km2"].sum()
+        recovery_erosion = grp.loc[post_month.isin(RECOVERY_MONTHS), "erosion_km2"].sum()
 
         print(f"\t{region}  (n={n} intervals)")
         print(f"\total erosion={total_erosion:.4f} km2  |  total accretion={total_accretion:.4f} km2")
@@ -432,7 +436,7 @@ def print_change_summary(df: pd.DataFrame):
         else:
             print(f"\tnet flux={net_flux:+.4f} km2 (accretion − erosion)")
         print(f"\t peak erosion: {peak_val:.4f} km2  ({peak_pre} → {peak_post})")
-        print(f"\tstorm Oct–Mar erosion={storm_erosion:.4f} km2 | calm Apr–Sep erosion={calm_erosion:.4f} km2\n")
+        print(f"\tstorm Nov–Apr erosion={storm_erosion:.4f} km2 | recovery May–Oct erosion={recovery_erosion:.4f} km2\n")
 
     ranked = sorted(peak_erosions, key=peak_erosions.__getitem__, reverse=True)
     print(f"\tPeak erosion ranking: {' > '.join(ranked)}")

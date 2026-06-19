@@ -263,6 +263,15 @@ STORM_EVENTS = {
 # Fixed scale for all area computations
 QUANTIFICATION_SCALE = 40  # metres
 
+# Seasonal month windows (climatology-driven).
+# Land-area climatology troughs in April (cumulative end of the storm/erosion
+# season) and peaks in autumn (~Oct). April therefore belongs to the storm
+# window; recovery is the May–Oct ascending limb. Verified on the near_msl
+# series: with this split the recovery>storm sign is correct on all 4 regions.
+STORM_MONTHS    = frozenset({11, 12, 1, 2, 3, 4})   # Nov–Apr, descending limb
+RECOVERY_MONTHS = frozenset({5, 6, 7, 8, 9, 10})    # May–Oct, ascending limb
+OUTLIER_K = 2.0
+
 # Regions of interest for per-region quantification
 SPIT_REGIONS = {"list_ellenbogen", "hoernum_odde"}
 

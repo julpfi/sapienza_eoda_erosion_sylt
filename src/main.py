@@ -2,7 +2,7 @@ import ee
 from utils.gee_utils import init_gee
 from utils import collection_utils
 from utils.tidal_utils import filter_bin
-from utils.config import STORM_EVENTS, BIN_LABELS, OUTPUT_DATA
+from utils.config import STORM_EVENTS, BIN_LABELS, OUTPUT_DATA, QUANTIFICATION_SCALE
 from analysis import sar_core as sar
 from analysis import optical_analysis as opt
 from analysis import sar_event_analysis as event
@@ -56,13 +56,12 @@ def sar_event_analysis(storm_id:str, save:bool=False):
 def seasonal_quantification(tidal_bin: str = "near_msl", save: bool = False):
     col = get_col(collection="S1", tidal_bin=tidal_bin)
 
-    cache_land = f"{OUTPUT_DATA}land_area.csv"
-    cache_change = f"{OUTPUT_DATA}change_timeseries.csv"
+    cache_land   = f"{OUTPUT_DATA}land_area_scale{QUANTIFICATION_SCALE}.csv"
+    cache_change = f"{OUTPUT_DATA}change_timeseries_scale{QUANTIFICATION_SCALE}.csv"
 
     print("\n--- Land area timeseries ---")
-    df_land_raw = ts.quantify_timeseries(col, cache_csv=cache_land)
-    df_land     = ts.filter_outlier_dates(df_land_raw)
-    bad_dates   = set(df_land_raw["date"]) - set(df_land["date"])
+    df_land_raw        = ts.quantify_timeseries(col, cache_csv=cache_land)
+    df_land, bad_dates = ts.filter_outlier_dates(df_land_raw)
     ts.print_timeseries_summary(df_land)
     ts.plot_timeseries(df_land, save=save)
     ts.plot_land_area_monthly_means(df_land, save=save)
@@ -133,16 +132,15 @@ if __name__ == "__main__":
 
     # ------- EVENT -----------
     # STORM_ID from 
-    for storm in ["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
-        #STORM_ID = "sabine_2020"
-        sar_event_analysis(storm, save=True)
-    
-    event.test_pair_selection()
+    #["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
+    #STORM_ID = "sabine_2020"
+    #sar_event_analysis(STORM_ID, save=True)
+    #event.test_pair_selection()
     
 
     # ---------- TIMESERIES ------------
-    #seasonal_quantification(tidal_bin="near_msl", save=True)
-    #sar_timeseries(tidal_bin="near_msl")
+    seasonal_quantification(tidal_bin="near_msl", save=True)
+    sar_timeseries(tidal_bin="near_msl")
 
     # ------------ OPTICAL ----------
     #opt_availability(save=True)

@@ -18,6 +18,7 @@ from utils.config import (
     S2_COLLECTION,
     OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
     VIS_S2_TRUE_COLOR, VIS_S2_NDWI,
+    STORM_MONTHS, RECOVERY_MONTHS,
 )
 
 
@@ -183,8 +184,8 @@ def generate_s2_timeseries_gif(col:  ee.ImageCollection,ndwi: bool = False, fps:
 #  4. S2 Availability Assessment (Funnel Analysis)
 # ------------------------------------------------------------ #
 
-_STORM_MONTHS = {10, 11, 12, 1, 2, 3}   # Oct–Mar
-_CALM_MONTHS  = {4, 5, 6, 7, 8, 9}       # Apr–Sep
+_STORM_LABEL    = "storm (Nov–Apr)"
+_RECOVERY_LABEL = "recovery (May–Oct)"
 
 
 def assess_s2_availability(
@@ -263,7 +264,9 @@ def assess_s2_availability(
         "month":  dates.month,
     })
 
-    df["season"] = df["month"].apply(lambda m: "storm (Oct–Mar)" if m in _STORM_MONTHS else "calm (Apr–Sep)")
+    df["season"] = df["month"].apply(
+        lambda m: _STORM_LABEL if m in STORM_MONTHS else _RECOVERY_LABEL
+    )
 
     # Per-year / per-season
     by_year = df.groupby("year").size().rename("scenes")
@@ -322,13 +325,13 @@ def _plot_s2_availability(df: pd.DataFrame, cloud_thr: int, save: bool = False):
     calm_col  = "#55aa55"
     months_ts = [p.to_timestamp() for p in monthly.index]
 
-    if "storm (Oct–Mar)" in monthly.columns:
-        ax.bar(months_ts, monthly["storm (Oct–Mar)"], width=25,
-               color=storm_col, alpha=0.85, label="Storm season (Oct–Mar)")
-    if "calm (Apr–Sep)" in monthly.columns:
-        bottom = monthly.get("storm (Oct–Mar)", 0)
-        ax.bar(months_ts, monthly["calm (Apr–Sep)"], width=25,
-               bottom=bottom, color=calm_col, alpha=0.85, label="Calm season (Apr–Sep)")
+    if _STORM_LABEL in monthly.columns:
+        ax.bar(months_ts, monthly[_STORM_LABEL], width=25,
+               color=storm_col, alpha=0.85, label="Storm season (Nov–Apr)")
+    if _RECOVERY_LABEL in monthly.columns:
+        bottom = monthly.get(_STORM_LABEL, 0)
+        ax.bar(months_ts, monthly[_RECOVERY_LABEL], width=25,
+               bottom=bottom, color=calm_col, alpha=0.85, label="Recovery season (May–Oct)")
 
     ax.set_xlabel("Date")
     ax.set_ylabel("Scenes / month")
