@@ -15,13 +15,12 @@ from utils.config import (
     QUANTIFICATION_SCALE, REGIONS_OF_INTEREST, WEST_COAST_AGGREGATE, SPIT_REGIONS,
     OUTPUT_PLOTS, OUTPUT_ANIMATIONS, OUTPUT_DATA,
     VIS_CHANGE_MAP, VIS_BINARY_WATER_MASK, VIS_SAR_VV,
-    STORM_MONTHS, RECOVERY_MONTHS, OUTLIER_K,
+    STORM_MONTHS, STORM_MONTHS_LABEL, RECOVERY_MONTHS, RECOVERY_MONTHS_LABEL, OUTLIER_K,
+    MONTH_NAMES,
 )
 from utils.tidal_utils import filter_bin
 from analysis.sar_core import get_otsu_mask
 
-_MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
-                "Jul","Aug","Sep","Oct","Nov","Dec"]
 
 
 # --------------------------------------------------------
@@ -69,13 +68,10 @@ def _reduce_area_km2(image: ee.Image, region_fc: ee.FeatureCollection, scale: in
 
 def generate_sar_timeseries_gif(col: ee.ImageCollection, mask: bool,
                                 fps: int = 2, width: int = 600, max_frames: int = 40):
-    """Render a GIF of the SAR timeseries (raw VV or water mask).
-
-    Frames are downloaded individually via getThumbURL rather than
-    getVideoThumbURL.  The video endpoint compiles all frames into one
-    computation graph, which overflows GEE's limit when Otsu (focal median +
-    histogram + threshold + focal mode + connectedPixelCount) is mapped over
-    40 images.  Per-frame thumbnail calls keep each request to one image.
+    """Render a GIF of the SAR timeseries (raw VV or water mask)
+    Frames are downloaded individually via getThumbURL instead of getVideoThumbURL
+    Otherise overflows GEE's limit when Otsu (focal median + histogram + threshold 
+        + focal mode + connectedPixelCount) is mapped over 40 images
     """
     aoi = _get_aoi()
 
@@ -100,18 +96,18 @@ def generate_sar_timeseries_gif(col: ee.ImageCollection, mask: bool,
         return vv_db.visualize(**VIS_SAR_VV)
 
     col_prepared = col.map(prep)
-    img_list_ee  = col_prepared.sort("system:time_start").toList(len(dates))
+    img_list_ee = col_prepared.sort("system:time_start").toList(len(dates))
 
     print(f"Downloading {len(dates)} frames individually (1 request/frame)...")
     frames = []
     for i, date in enumerate(dates):
-        img  = ee.Image(img_list_ee.get(i))
-        url  = img.getThumbURL({"region": aoi, "dimensions": width})
+        img = ee.Image(img_list_ee.get(i))
+        url = img.getThumbURL({"region": aoi, "dimensions": width})
         resp = requests.get(url)
         resp.raise_for_status()
         frame = Image.open(io.BytesIO(resp.content)).convert("RGBA")
-        draw  = ImageDraw.Draw(frame)
-        x, y  = 15, 15
+        draw = ImageDraw.Draw(frame)
+        x, y = 15, 15
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             draw.text((x + dx, y + dy), date, fill="black")
         draw.text((x, y), date, fill="white")
@@ -211,11 +207,8 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
 
 def filter_outlier_dates(df: pd.DataFrame, k: float = OUTLIER_K) -> tuple[pd.DataFrame, set]:
     """
-    Per-region upper Tukey fence: Q3 + k*IQR on each region's own land_km2.
-    Upper-only — rough-water false-land bias is one-sided.
-    Union of flagged dates across all regions -> bad_dates.
-    Drop at the date level so the panel stays rectangular.
-    Returns (cleaned_df, bad_dates).
+    Per-region upper bound: Q3 + k*IQR on each region's own land_km2
+    Rough-water false-land bias is one-sided -> upper bound only
     """
     bad_dates: set = set()
     date_triggers: dict = {}
@@ -225,7 +218,7 @@ def filter_outlier_dates(df: pd.DataFrame, k: float = OUTLIER_K) -> tuple[pd.Dat
         q1, q3 = land.quantile(0.25), land.quantile(0.75)
         iqr = q3 - q1
         upper = q3 + k * iqr
-        print(f"  {region}: upper fence = Q3 + {k}×IQR = {upper:.3f} km2")
+        print(f"\t{region}: upper bound = Q3 + {k}xIQR = {upper:.3f} km2")
 
         for date, val in land[land > upper].items():
             bad_dates.add(date)
@@ -235,13 +228,13 @@ def filter_outlier_dates(df: pd.DataFrame, k: float = OUTLIER_K) -> tuple[pd.Dat
         print("filter_outlier_dates: no outliers found.")
         return df, bad_dates
 
-    print(f"\nDropping {len(bad_dates)} date(s):")
+    print(f"\nDropping {len(bad_dates)} dates:")
     for d in sorted(bad_dates):
         triggers = ", ".join(f"{r}={v:.3f}" for r, v in date_triggers[d])
         print(f"  {d.strftime('%Y-%m-%d')}  triggered by: {triggers}")
 
     cleaned = df[~df["date"].isin(bad_dates)].reset_index(drop=True)
-    print(f"\t{len(bad_dates)} date(s) removed, {cleaned['date'].nunique()} remaining.\n")
+    print(f"\t{len(bad_dates)} dates removed, {cleaned['date'].nunique()} remaining.\n")
     return cleaned, bad_dates
 
 
@@ -284,21 +277,19 @@ def print_timeseries_summary(df: pd.DataFrame):
         seas_diff = recovery_mean - storm_mean
 
         print(f"  {region}  (n={n})")
-        print(f"    mean={land.mean():.3f} km2")
-        print(f"    min={min_val:.3f} km2 ({date_min})  "
-              f"max={max_val:.3f} km2 ({date_max})  amplitude={amp:.3f} km2")
-        print(f"    trend: {trend}")
-        print(f"    storm Nov–Apr: {storm_mean:.3f} km2  |  "
-              f"recovery May–Oct: {recovery_mean:.3f} km2  |  seasonal diff={seas_diff:+.3f} km2")
+        print(f"\tmean={land.mean():.3f} km2")
+        print(f"\tmin={min_val:.3f} km2 ({date_min})")
+        print(f"\tmax={max_val:.3f} km2 ({date_max}")
+        print(f"\tamplitude={amp:.3f} km2")
+        print(f"\t\ttrend: {trend}")
+        print(f"\t\tstorm {STORM_MONTHS_LABEL}: {storm_mean:.3f} km2  | \nrecovery {RECOVERY_MONTHS_LABEL}: {recovery_mean:.3f} km2  |  seasonal diff={seas_diff:+.3f} km2")
         print()
 
-    ranked = sorted(amplitudes, key=amplitudes.__getitem__, reverse=True)
-    print(f"  Amplitude ranking: {' > '.join(ranked)}")
     print("  [OLS trend; seasonal autocorrelation makes SE anti-conservative → p > 0.05 is a robust null]")
 
 
 def plot_timeseries(df: pd.DataFrame, save: bool = False):
-    """Line plot of land area per region over time."""
+    """Line plot of land area per region over time"""
     fig, ax = plt.subplots(figsize=(13, 5))
 
     for region, grp in df.groupby("region"):
@@ -382,7 +373,7 @@ def quantify_change_timeseries(col: ee.ImageCollection,
         end = min(start + batch_size, n_pairs)
         print(f"  Batch {b + 1}/{n_batches}: pairs {start}–{end - 1}")
         batch_pairs = all_pairs.slice(start, end)
-        batch_fc    = ee.FeatureCollection(batch_pairs.map(process_pair)).flatten()
+        batch_fc = ee.FeatureCollection(batch_pairs.map(process_pair)).flatten()
         for feat in batch_fc.getInfo()["features"]:
             p = feat["properties"]
             rows.append({
@@ -436,7 +427,7 @@ def print_change_summary(df: pd.DataFrame):
         else:
             print(f"\tnet flux={net_flux:+.4f} km2 (accretion − erosion)")
         print(f"\t peak erosion: {peak_val:.4f} km2  ({peak_pre} → {peak_post})")
-        print(f"\tstorm Nov–Apr erosion={storm_erosion:.4f} km2 | recovery May–Oct erosion={recovery_erosion:.4f} km2\n")
+        print(f"\tstorm {STORM_MONTHS_LABEL} erosion={storm_erosion:.4f} km2 | recovery {RECOVERY_MONTHS_LABEL} erosion={recovery_erosion:.4f} km2\n")
 
     ranked = sorted(peak_erosions, key=peak_erosions.__getitem__, reverse=True)
     print(f"\tPeak erosion ranking: {' > '.join(ranked)}")
@@ -451,7 +442,7 @@ def plot_change_timeseries(df: pd.DataFrame, save: bool = False):
     erosion_color = f"#{VIS_CHANGE_MAP['palette'][1]}"
     accretion_color = f"#{VIS_CHANGE_MAP['palette'][2]}"
 
-    regions   = sorted(df["region"].unique())
+    regions = sorted(df["region"].unique())
     n_regions = len(regions)
 
     fig, axes = plt.subplots(n_regions, 1, figsize=(13, 3.5 * n_regions), sharex=True)
@@ -510,11 +501,11 @@ def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False):
 
     regions = sorted(df["region"].unique())
     n_regions = len(regions)
-    n_cols = min(3, n_regions)
+    n_cols = 2 if n_regions <= 4 else 3
     n_rows = (n_regions + n_cols - 1) // n_cols
-    colors= plt.cm.tab10(np.linspace(0, 1, n_regions))
+    colors = plt.cm.tab10(np.linspace(0, 1, n_regions))
 
-    fig = plt.figure(figsize=(14, 4 + 3.5 * n_rows))
+    fig = plt.figure(figsize=(13, 4 + 4 * n_rows))
     gs = gridspec.GridSpec(1 + n_rows, n_cols, figure=fig,
                             hspace=0.55, wspace=0.35)
 
@@ -534,7 +525,7 @@ def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False):
 
     ax_top.axhline(0, color="black", linewidth=0.8, linestyle="--")
     ax_top.set_xticks(months)
-    ax_top.set_xticklabels(_MONTH_NAMES)
+    ax_top.set_xticklabels(MONTH_NAMES)
     ax_top.set_ylabel("Land-area anomaly (km2)")
     ax_top.set_title("Monthly land-area anomaly 2017–2024 (near_msl bin) — shading ±1σ inter-annual")
     ax_top.legend(fontsize=8, ncol=min(4, n_regions))
@@ -552,7 +543,7 @@ def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False):
                         r["clim_mean"] - std, r["clim_mean"] + std,
                         alpha=0.2, color=color)
         ax.set_xticks(months)
-        ax.set_xticklabels(_MONTH_NAMES, fontsize=7, rotation=45, ha="right")
+        ax.set_xticklabels(MONTH_NAMES, fontsize=7, rotation=45, ha="right")
         ax.set_title(region, fontsize=9)
         ax.set_ylabel("Land km2", fontsize=8)
 
@@ -613,7 +604,7 @@ def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False):
                     fmt="none", color="black", capsize=3, linewidth=0.8)
 
         ax.set_xticks(x)
-        ax.set_xticklabels(_MONTH_NAMES)
+        ax.set_xticklabels(MONTH_NAMES)
         ax.set_ylabel("Area (km2)")
         ax.set_title(region)
         ax.legend(fontsize=8)
@@ -632,7 +623,7 @@ def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False):
 
 def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False):
     """
-    Monthly-averaged land area over the full 2017–2024 record
+    Monthly-averaged land area over the full 2017-2024 record
     One point per calendar-month x year cell (averages over multiple acquisitions in the same month) 
     """
 
@@ -657,7 +648,7 @@ def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False):
 
     ax.set_xlabel("Date")
     ax.set_ylabel("Land area (km2)")
-    ax.set_title("Monthly mean land area 2017–2024 (near_msl bin)")
+    ax.set_title("Monthly mean land area 2017-2024 (near_msl bin)")
     ax.legend(fontsize=8)
     plt.tight_layout()
 

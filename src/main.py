@@ -39,28 +39,38 @@ def sar_one_image(date: str, tidal_bin: str = BIN_LABELS[2]):
 
     print(f"\n--- Filter on date {date} ---")
     start_date = ee.Date(date)
-    day_col    = s1_col.filterDate(start_date, start_date.advance(1, "day"))
+    day_col = s1_col.filterDate(start_date, start_date.advance(1, "day"))
 
     if day_col.size().getInfo() == 0:
-        print(f"No image found on {date} during a '{tidal_bin}' tide.")
+        print(f"No image found on {date} during a '{tidal_bin}' tide")
         return
 
     sar.plot_single_image(img=day_col.first(), title=f"Sentinel-1 overpass on {date}")
 
 
-def sar_event_analysis(storm_id:str, save:bool=False):
-    s1_col = get_col(collection="S1", tidal_bin=None)
+def sar_event_analysis(storm_id: str, save: bool = False):
+    """Event analysis"""
+    print("\n--- Initialize GEE ---")
+    init_gee()
+    print("\n--- Building all-orbit S1 collection ---")
+    # Uses all orbits so select_event_pair can choose the best one
+    s1_col = collection_utils.get_collection_s1(orbit=None)
     event.run_event_analysis(storm_id, s1_col, save=save)
+
+
+def scale_comparison(save: bool = False):
+    """Run Sabine at 40/20/10 m and optionally save a methods comparison figure"""
+    event.compare_scales_sabine(save=save)
 
 
 def seasonal_quantification(tidal_bin: str = "near_msl", save: bool = False):
     col = get_col(collection="S1", tidal_bin=tidal_bin)
 
-    cache_land   = f"{OUTPUT_DATA}land_area_scale{QUANTIFICATION_SCALE}.csv"
+    cache_land = f"{OUTPUT_DATA}land_area_scale{QUANTIFICATION_SCALE}.csv"
     cache_change = f"{OUTPUT_DATA}change_timeseries_scale{QUANTIFICATION_SCALE}.csv"
 
     print("\n--- Land area timeseries ---")
-    df_land_raw        = ts.quantify_timeseries(col, cache_csv=cache_land)
+    df_land_raw = ts.quantify_timeseries(col, cache_csv=cache_land)
     df_land, bad_dates = ts.filter_outlier_dates(df_land_raw)
     ts.print_timeseries_summary(df_land)
     ts.plot_timeseries(df_land, save=save)
@@ -113,13 +123,27 @@ def opt_one_image(date: str, tidal_bin: str = BIN_LABELS[2]):
     opt.plot_single_image_s2(col, date, ndwi=True)
 
 
-def opt_availability(save: bool = False):
-    """S2 availability statistics"""
+def sar_availability(tidal_bin: str = "near_msl"):
+    """S1 availability: total → per orbit → per orbit + tidal filter"""
+    print("\n--- Initialize GEE ---")
+    init_gee()
+    print("\n--- S1 Availability Assessment ---")
+    collection_utils.assess_s1_availability(tidal_bin=tidal_bin)
+
+
+def opt_availability():
+    """S2 availability statistics — monthly matrix by cloud threshold and tidal filter"""
     print("\n--- Initialize GEE ---")
     init_gee()
     print("\n--- S2 Availability Assessment ---")
-    # No col before needed -> all handeled inside due to grouping of statisitcs
-    opt.assess_s2_availability(cloud_thresholds=(20, 40), save=save)
+    opt.assess_s2_availability(cloud_thresholds=(20, 40))
+
+
+def opt_best_scene(year:int|None=None, date:str|None=None, save:bool=False, region_boxes:bool=False):
+    """Presentation visual -> lowest cloud and near-MSL summer S2 scene, true-colour + NDWI"""
+    print("\n--- Initialize GEE ---")
+    init_gee()
+    opt.plot_best_s2_scene(year=year, date=date, save=save, region_boxes=region_boxes)
 
 
 if __name__ == "__main__":
@@ -129,21 +153,24 @@ if __name__ == "__main__":
     # sar_otsu_test("2019-06-27")
     # sar_otsu_test(tidal_bin="very_high")
 
-
     # ------- EVENT -----------
-    # STORM_ID from 
-    #["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
-    #STORM_ID = "sabine_2020"
-    #sar_event_analysis(STORM_ID, save=True)
+    for STORM_ID in ["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
+        sar_event_analysis(STORM_ID, save=True)
+    # scale_comparison(save=True)
     #event.test_pair_selection()
-    
 
-    # ---------- TIMESERIES ------------
-    seasonal_quantification(tidal_bin="near_msl", save=True)
-    sar_timeseries(tidal_bin="near_msl")
+    # ---- VERIFY: timeseries path still uses orbit 139 (default) ----
+    # seasonal_quantification(tidal_bin="near_msl", save=True)
+    # sar_timeseries(tidal_bin="near_msl")
 
-    # ------------ OPTICAL ----------
-    #opt_availability(save=True)
+    # ------------ SAR AVAILABILITY ----------
+    # sar_availability()
+
+    # ------------ OPTICAL AVAILABILITY ----------
+    # opt_availability()
+
+    # ------------ OPTICAL BEST SCENE ----------
+    # opt_best_scene(date="2020-08-15", save=True, region_boxes=True)
    
 
     

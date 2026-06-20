@@ -1,5 +1,5 @@
 import io
-from collections import Counter
+import re
 
 import requests
 import numpy as np
@@ -11,6 +11,7 @@ import ee
 
 from utils.collection_utils import (
     _get_aoi, _get_base_collection, _mosaic_by_day, _attach_tidal,
+    get_collection_s2,
 )
 from utils.tidal_utils import filter_bin
 from utils.config import (
@@ -18,7 +19,9 @@ from utils.config import (
     S2_COLLECTION,
     OUTPUT_ANIMATIONS, OUTPUT_PLOTS,
     VIS_S2_TRUE_COLOR, VIS_S2_NDWI,
-    STORM_MONTHS, RECOVERY_MONTHS,
+    REGIONS_OF_INTEREST, WEST_COAST_AGGREGATE,
+    GEO_JSON_SYLT_COMPLETE,
+    MONTH_NAMES,
 )
 
 
@@ -76,13 +79,8 @@ def _compute_ndwi(img: ee.Image) -> ee.Image:
 #  2. Single-Image Display
 # ------------------------------------------------------------ #
 
-def plot_single_image_s2(
-    col:         ee.ImageCollection,
-    target_date: str,
-    title:       str  = "Sentinel-2",
-    ndwi:        bool = False,
-    save:        bool = False,
-):
+def plot_single_image_s2(col: ee.ImageCollection, target_date:str,
+                          title: str="Sentinel-2",ndwi:bool=False,save:bool=False):
     """
     Display one S2 image from the collection for target_date
     """
@@ -181,171 +179,182 @@ def generate_s2_timeseries_gif(col:  ee.ImageCollection,ndwi: bool = False, fps:
 
 
 # ------------------------------------------------------------ #
-#  4. S2 Availability Assessment (Funnel Analysis)
+#  4. S2 Availability Assessment 
 # ------------------------------------------------------------ #
 
-_STORM_LABEL    = "storm (Nov–Apr)"
-_RECOVERY_LABEL = "recovery (May–Oct)"
-
-
-def assess_s2_availability(
-    cloud_thresholds: tuple[int, int] = (20, 40),
-    tidal_bin: str = "near_msl",
-    save: bool = False,
-) -> pd.DataFrame:
+def assess_s2_availability(cloud_thresholds: tuple[int, int]=(20, 40), tidal_bin: str = "near_msl") -> None:
     """
-    Availability statistics for Sentinel-2 over the Sylt AOI (2017–2024)
-    Splits:
-      1. All S2 images 
-      2. After scene-level cloud filter at each threshold
-      3. After tidal filter only
-      4. After cloud + tidal
-    All relative orbits are mixed
+    Monthly availability matrix for Sentinel-2 over the Sylt AOI
+
     """
     aoi = _get_aoi()
     thr_lo, thr_hi = cloud_thresholds
-
-    # Step 1 All
-    print("Building base S2 collection (all orbits, no cloud filter)…")
     base = _get_base_collection(S2_COLLECTION, aoi, START_DATE, END_DATE)
-    col_all = _mosaic_by_day(base)
-    n_all = col_all.size().getInfo()
 
-    # Step 2 Cloud filter
-    print(f"Applying cloud filter < {thr_lo}% …")
-    col_cloud_lo = _mosaic_by_day(
-        base.filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_lo))
+    def day_month_counts(col):
+        times = col.aggregate_array("system:time_start").getInfo()
+        if not times:
+            return pd.Series(dtype=int)
+        dates = pd.to_datetime(times, unit="ms", utc=True)
+        unique_days = pd.to_datetime(dates.normalize().unique())
+        return pd.Series(pd.DatetimeIndex(unique_days).month).value_counts()
+
+    def tidal_month_counts(pre_mosaic_col):
+        col = filter_bin(_attach_tidal(_mosaic_by_day(pre_mosaic_col)), tidal_bin)
+        times = col.aggregate_array("system:time_start").getInfo()
+        if not times:
+            return pd.Series(dtype=int)
+        dates = pd.to_datetime(times, unit="ms", utc=True)
+        return pd.Series(dates.month).value_counts()
+
+    col_lo = base.filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_lo))
+    col_hi = base.filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_hi))
+
+    print("Fetching S2 scene counts…")
+    step_counts = {
+        "All":                              day_month_counts(base),
+        f"Cloud<{thr_lo}%":                day_month_counts(col_lo),
+        f"Cloud<{thr_hi}%":                day_month_counts(col_hi),
+        f"Cloud<{thr_lo}%+{tidal_bin}":    tidal_month_counts(col_lo),
+        f"Cloud<{thr_hi}%+{tidal_bin}":    tidal_month_counts(col_hi),
+    }
+
+    idx = range(1, 13)
+    df = pd.DataFrame(index=idx)
+    for name, counts in step_counts.items():
+        df[name] = counts.reindex(idx, fill_value=0).astype(int)
+    df.loc["Total"] = df.sum()
+    df.index = MONTH_NAMES + ["Total"]
+
+    print(f"\n{'=' * 80}")
+    print(f"S2 Availability  ({START_DATE[:4]}–{END_DATE[:4]}, Sylt AOI, all orbits)")
+    print()
+    print(df.to_string())
+    print("=" * 80)
+
+
+# ------------------------------------------------------------ #
+#  5. Best-Scene Presentation Visual
+# ------------------------------------------------------------ #
+
+def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str, save: bool = False) -> None:
+    """True-colour thumbnail with axis-aligned bounding boxes for each ROI and the aggregate."""
+    aoi_coords = GEO_JSON_SYLT_COMPLETE["features"][0]["geometry"]["coordinates"][0]
+    lon_min = min(c[0] for c in aoi_coords)
+    lon_max = max(c[0] for c in aoi_coords)
+    lat_max = max(c[1] for c in aoi_coords)
+    lat_min = min(c[1] for c in aoi_coords)
+
+    w, h = thumb.size
+
+    def geo_to_pix(lon, lat):
+        px = (lon - lon_min) / (lon_max - lon_min) * w
+        py = (lat_max - lat) / (lat_max - lat_min) * h
+        return px, py
+
+    def make_patch(geojson, color, label):
+        coords = geojson["features"][0]["geometry"]["coordinates"][0]
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        x0, y0 = geo_to_pix(min(lons), max(lats))   # top-left in pixel space
+        x1, y1 = geo_to_pix(max(lons), min(lats))   # bottom-right in pixel space
+        return mpatches.Rectangle(
+            (x0, y0), x1 - x0, y1 - y0,
+            linewidth=2.5, edgecolor=color, facecolor="none", label=label, zorder=5,
         )
-    n_cloud_lo = col_cloud_lo.size().getInfo()
 
-    print(f"Applying cloud filter < {thr_hi}% …")
-    col_cloud_hi = _mosaic_by_day(
-        base.filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_hi))
-    )
-    n_cloud_hi = col_cloud_hi.size().getInfo()
+    region_configs = [
+        (REGIONS_OF_INTEREST["list_ellenbogen"],    "#e6194b", "List / Ellenbogen"),
+        (REGIONS_OF_INTEREST["rotes_kliff_kampen"], "#f58231", "Rotes Kliff / Kampen"),
+        (REGIONS_OF_INTEREST["hoernum_odde"],       "#4363d8", "Hoernum Odde"),
+        (WEST_COAST_AGGREGATE,                      "#3cb44b", "West coast (aggregate)"),
+    ]
 
-    # Step 3 tidal filter 
-    print("Attaching tidal metadata to all scenes…")
-    col_all_tidal = _attach_tidal(col_all)
-    col_tidal_only = filter_bin(col_all_tidal, tidal_bin)
-    n_tidal_only = col_tidal_only.size().getInfo()
+    fig_h = 7.0
+    fig_w = fig_h * w / h
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    ax.imshow(thumb)
 
-    # Step 4: cloud + tidal 
-    print(f"Attaching tidal metadata to cloud-filtered (<{thr_lo}%) scenes…")
-    col_lo_tidal = _attach_tidal(col_cloud_lo)
-    col_both_lo = filter_bin(col_lo_tidal, tidal_bin)
-    n_both_lo = col_both_lo.size().getInfo()
+    for geojson, color, label in region_configs:
+        ax.add_patch(make_patch(geojson, color, label))
 
-    print(f"Attaching tidal metadata to cloud-filtered (<{thr_hi}%) scenes…")
-    col_hi_tidal = _attach_tidal(col_cloud_hi)
-    col_both_hi = filter_bin(col_hi_tidal, tidal_bin)
-    n_both_hi = col_both_hi.size().getInfo()
-
-    # Print table
-    W = 56
-    print("\n" + "=" * W)
-    print("S2 Availability Funnel  (2017-–2024, Sylt AOI, all orbits)\n")
-    print(f"{'Step':<42} {'Count':>6}")
-    print("-" * W)
-    print(f"{'1. All S2 scenes (unique dates)':<42} {n_all:>6}")
-    print(f"{'2. Cloud < ' + str(thr_lo) + '%':<42} {n_cloud_lo:>6}")
-    print(f"{'   Cloud < ' + str(thr_hi) + '%':<42} {n_cloud_hi:>6}")
-    print(f"{'3. Tidal only (' + tidal_bin + ')':<42} {n_tidal_only:>6}")
-    print(f"{'4. Cloud < ' + str(thr_lo) + '% + tidal':<42} {n_both_lo:>6}  ← primary")
-    print(f"{'   Cloud < ' + str(thr_hi) + '% + tidal':<42} {n_both_hi:>6}")
-    print("=" * W)
-
-    # ── Build date DataFrame from primary set ─────────────────
-    times = col_both_lo.aggregate_array("system:time_start").getInfo()
-    dates = pd.to_datetime(times, unit="ms", utc=True)
-    df = pd.DataFrame({
-        "date":   dates,
-        "year":   dates.year,
-        "month":  dates.month,
-    })
-
-    df["season"] = df["month"].apply(
-        lambda m: _STORM_LABEL if m in STORM_MONTHS else _RECOVERY_LABEL
-    )
-
-    # Per-year / per-season
-    by_year = df.groupby("year").size().rename("scenes")
-    by_season = df.groupby("season").size().rename("scenes")
-
-    print(f"\nPer-year (cloud < {thr_lo}% + {tidal_bin}):")
-    print(by_year.to_string())
-    print(f"\nPer-season (cloud < {thr_lo}% + {tidal_bin}):")
-    print(by_season.to_string())
-
-
-    # Orbit comparison
-    print("\nQuerying orbit numbers for comparison…")
-    orbit_nums = (
-        base.filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_lo))
-            .aggregate_array("SENSING_ORBIT_NUMBER")
-            .getInfo()
-    )
-
-    if orbit_nums:
-        dominant_orbit = Counter(orbit_nums).most_common(1)[0][0]
-        col_single = _mosaic_by_day(
-            base
-            .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", thr_lo))
-            .filter(ee.Filter.eq("SENSING_ORBIT_NUMBER", int(dominant_orbit)))
-        )
-        col_single_tidal = _attach_tidal(col_single)
-        col_single_both  = filter_bin(col_single_tidal, tidal_bin)
-        n_single         = col_single_both.size().getInfo()
-
-        gain = n_both_lo - n_single
-        print(f"\nOrbit comparison (cloud < {thr_lo}% + {tidal_bin}):")
-        print(f"  All orbits mixed:      {n_both_lo:>4}")
-        print(f"  Orbit {dominant_orbit} only:          {n_single:>4}")
-        print(f"  Gain from mixing:      {gain:>4}  "
-              f"({gain / max(n_single, 1) * 100:.0f}% more scenes)")
-
-    # Plot
-    _plot_s2_availability(df, thr_lo, save=save)
-    return df
-
-
-def _plot_s2_availability(df: pd.DataFrame, cloud_thr: int, save: bool = False):
-    """Monthly bar chart of usable S2 scenes, shaded by storm / calm season."""
-    if df.empty:
-        print("No usable scenes — nothing to plot.")
-        return
-
-    df = df.copy()
-    df["year_month"] = df["date"].dt.to_period("M")
-    monthly = df.groupby(["year_month", "season"]).size().unstack(fill_value=0)
-
-    fig, ax = plt.subplots(figsize=(15, 4))
-
-    storm_col = "#2255aa"
-    calm_col  = "#55aa55"
-    months_ts = [p.to_timestamp() for p in monthly.index]
-
-    if _STORM_LABEL in monthly.columns:
-        ax.bar(months_ts, monthly[_STORM_LABEL], width=25,
-               color=storm_col, alpha=0.85, label="Storm season (Nov–Apr)")
-    if _RECOVERY_LABEL in monthly.columns:
-        bottom = monthly.get(_STORM_LABEL, 0)
-        ax.bar(months_ts, monthly[_RECOVERY_LABEL], width=25,
-               bottom=bottom, color=calm_col, alpha=0.85, label="Recovery season (May–Oct)")
-
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Scenes / month")
-    ax.set_title(
-        f"Sentinel-2 usable scenes over Sylt AOI\n"
-        f"cloud < {cloud_thr}%  +  near-MSL tide  |  all relative orbits  |  2017–2024"
-    )
-    ax.legend(fontsize=9)
-    ax.set_xlim(pd.Timestamp("2017-01-01"), pd.Timestamp("2025-01-01"))
+    ax.legend(loc="lower left", fontsize=8, framealpha=0.85)
+    ax.set_title(f"Sentinel-2 {scene_date} — Regions of Interest", fontsize=10)
+    ax.axis("off")
     plt.tight_layout()
 
     if save:
-        path = f"{OUTPUT_PLOTS}s2_availability.png"
+        safe = re.sub(r"[^\w\-]", "_", scene_date)
+        path = f"{OUTPUT_PLOTS}s2_best_scene_{safe}_region_boxes.png"
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
     plt.show()
+
+
+def plot_best_s2_scene(year:int|None=None, date:str|None=None, save:bool=False, region_boxes:bool=False) -> None:
+    """
+    Selects the cleanest (=lowest CLOUDY_PIXEL_PERCENTAGE), near-MSL summer Sentinel-2 scene over the Sylt AOI  true-colour / NDWI image
+    """
+    aoi = _get_aoi()
+    tidal_bin = "near_msl"
+
+    print("\n--- Building S2 summer near-MSL collection ---")
+    col = get_collection_s2()         # summer months, cloud < 20 %
+    col = filter_bin(col, tidal_bin)  # near-MSL tidal bin
+    if col.size().getInfo() == 0:
+        print("No scenes found after tidal filtering.")
+        return
+
+    # ── Scene selection ──────────────────────────────────────────────────────
+    if date is not None:
+        img = _get_image_for_date(col, date)
+    elif year is not None:
+        year_col = col.filterDate(f"{year}-01-01", f"{year + 1}-01-01")
+        if year_col.size().getInfo() == 0:
+            raise ValueError(f"No near-MSL summer S2 scene found for year {year}.")
+        img = year_col.sort("CLOUDY_PIXEL_PERCENTAGE").first()
+    else:
+        img = col.sort("CLOUDY_PIXEL_PERCENTAGE").first()
+
+    # ── Print reproducibility info ───────────────────────────────────────────
+    info = img.toDictionary(
+        ["system:time_start", "CLOUDY_PIXEL_PERCENTAGE", "tidal_bin", "tidal_height_m"]
+    ).getInfo()
+    scene_date = pd.to_datetime(info["system:time_start"], unit="ms", utc=True).strftime("%Y-%m-%d")
+    cloud_pct  = info.get("CLOUDY_PIXEL_PERCENTAGE", float("nan"))
+    tbin_label = info.get("tidal_bin",       tidal_bin)
+    tide_m     = info.get("tidal_height_m",  float("nan"))
+    print(f"Selected scene: {scene_date}  |  cloud={cloud_pct:.1f}%  |  tide={tide_m:+.2f} m  ({tbin_label})")
+
+    # Download thumbnails
+    true_colour = img.select(["B4", "B3", "B2"])
+    ndwi_img = _compute_ndwi(img)
+    tc_thumb = _open_image_thumbnail(true_colour, aoi, VIS_S2_TRUE_COLOR)
+    ndwi_thumb = _open_image_thumbnail(ndwi_img, aoi, VIS_S2_NDWI)
+
+    # Plot
+    title_str = (f"Sentinel-2  {scene_date}  |  {tbin_label} ({tide_m:+.2f} m)  |  cloud {cloud_pct:.1f}%")
+    fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+    fig.suptitle(title_str, fontsize=11)
+
+    axes[0].imshow(tc_thumb)
+    axes[0].set_title("True colour  (B4 * B3 * B2)", fontsize=9)
+    axes[0].axis("off")
+
+    axes[1].imshow(ndwi_thumb)
+    axes[1].set_title("NDWI  (Green − NIR) / (Green + NIR)", fontsize=9)
+    axes[1].axis("off")
+
+    plt.tight_layout()
+
+    if save:
+        safe = re.sub(r"[^\w\-]", "_", scene_date)
+        path = f"{OUTPUT_PLOTS}s2_best_scene_{safe}.png"
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        print(f"Saved to {path}")
+
+    plt.show()
+
+    if region_boxes:
+        _plot_s2_region_boxes(tc_thumb, scene_date, save=save)

@@ -104,27 +104,33 @@ END_DATE    = "2024-12-31"
 
 # Visualization Settings --------------------------------------
 VIS_SAR_VV = {
-    "min": -25, 
-    "max": 0, 
+    "min": -25,
+    "max": 0,
     "palette": ["000000", "ffffff"]
 }
 
+# Semantic colour constants
+COLOR_LAND      = "E6D5A8"
+COLOR_WATER     = "274C77"
+COLOR_EROSION   = "D55E00"
+COLOR_ACCRETION = "009E73" 
+
 # Binary water mask (0 = land, 1 = water)
 VIS_BINARY_WATER_MASK = {
-    "min": 0, 
-    "max": 1, 
-    "palette": ["d4d4d4", "2255aa"]
+    "min": 0,
+    "max": 1,
+    "palette": [COLOR_LAND, COLOR_WATER]
 }
 
-# Change Map
+# Change Map (0 = consistent land, 1 = erosion, 2 = accretion, 3 = consistent water)
 VIS_CHANGE_MAP = {
-    "min": 0, 
+    "min": 0,
     "max": 3,
     "palette": [
-        "888888",   # 0 – Consistent land
-        "00ccff",   # 1 – new water (erosion)
-        "ff3333",   # 2 – new land (recovery)
-        "224488",   # 3 – Consistent water
+        COLOR_LAND,       # 0 – Consistent land
+        COLOR_EROSION,    # 1 – new water (erosion)
+        COLOR_ACCRETION,  # 2 – new land (recovery)
+        COLOR_WATER,      # 3 – Consistent water
     ]
 }
 
@@ -154,42 +160,12 @@ S1_COLLECTION = "COPERNICUS/S1_GRD_FLOAT"
 S1_PASS = "DESCENDING"
 S1_ORBIT = 139
 
-"""
-Number of images available between "2017-01-01" and "2024-12-31" grouped by the tidal bins 
-Orbit 37  (DESCENDING)
-- high_mid: 87 images
-- low_mid: 60 images
-- near_msl: 95 images
-- very_high: 17 images
-- very_low: 121 images
-
-Orbit 139 (DESCENDING)
-- high_mid: 88 images
-- low_mid: 60 images
-- near_msl: 105 images
-- very_high: 19 images
-- very_low: 117 images
-
-Orbit 15 (ASCENDING)
-- high_mid: 109 images
-- low_mid: 54 images
-- near_msl: 87 images
-- very_high: 28 images
-- very_low: 99 images
-
-Orbit 117  (ASCENDING)
-- high_mid: 117 images
-- low_mid: 59 images
-- near_msl: 83 images
-- very_high: 26 images
-- very_low: 97 images
-"""
 
 
 # Optical Config ----------------------------------------------
-S2_COLLECTION    = "COPERNICUS/S2_SR_HARMONIZED"
-MAX_CLOUD_PERC   = 20
-OPTICAL_MONTHS   = [5, 6, 7, 8, 9] #TODO 
+S2_COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
+MAX_CLOUD_PERC = 20
+OPTICAL_MONTHS   = [5, 6, 7, 8, 9] 
 
 
 # Tidal Control -----------------------------------------------
@@ -201,10 +177,10 @@ CMEMS_DATASET  = "cmems_mod_nws_phy-ssh_my_7km-2D_PT1H-i"
 CMEMS_VARIABLE = "zos" 
 
 # Bounding box of sylt
-CMEMS_LON_MIN  =  8.3
-CMEMS_LON_MAX  =  8.6
-CMEMS_LAT_MIN  = 54.9
-CMEMS_LAT_MAX  = 55.1
+CMEMS_LON_MIN =  8.3
+CMEMS_LON_MAX =  8.6
+CMEMS_LAT_MIN = 54.9
+CMEMS_LAT_MAX = 55.1
 
 # CSV cache for the downloaded sea surface height (ssh)
 CMEMS_DATA_PATH = str(_REPO_ROOT / "data" / "cmems" / "sea_surface_heigth_sylt.csv")
@@ -217,6 +193,9 @@ TIDAL_WINDOW_M = 0.25   # metres either side of MSL (Option A)
 BIN_EDGES  = [-3.0, -0.75, -0.25, 0.25, 0.75, 3.0]
 BIN_LABELS = ["very_low", "low_mid", "near_msl", "high_mid", "very_high"]
 
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
 
 
 # SAR Storm Event Analysis
@@ -228,9 +207,9 @@ STORM_EVENTS = {
     "sabine_2020": {
         "name": "Sabine",
         "select": {
-            "event_date": "2020-02-10",
-            "min_buffer_days": 3,
-            "max_pre_lag_days": 14,
+            "block_start":      "2020-02-09",   # one day before storm landfall
+            "block_end":        "2020-02-11",   # one day after — spans the storm-day overpass
+            "max_pre_lag_days":  14,
             "max_post_lag_days": 21,
         },
         # LKN survey 2020-02-13: dune breakage on ca. 12.5 km
@@ -239,9 +218,9 @@ STORM_EVENTS = {
     "ylenia_zeynep_antonia_2022": {
         "name": "Ylenia / Zeynep / Antonia (cluster)",
         "select": {
-            "event_date": "2022-02-18",
-            "min_buffer_days": 5,  # Storm cluster
-            "max_pre_lag_days": 21,
+            "block_start":      "2022-02-16",   # Ylenia arrival; cluster ends with Antonia
+            "block_end":        "2022-02-21",
+            "max_pre_lag_days":  21,
             "max_post_lag_days": 28,
         },
         # LKN survey 2022-02-20: dune breakage on ca. 9.7 km
@@ -249,9 +228,9 @@ STORM_EVENTS = {
     "zoltan_2023": {
         "name": "Zoltan",
         "select": {
-            "event_date": "2023-12-23",
-            "min_buffer_days": 2,
-            "max_pre_lag_days": 21,
+            "block_start":      "2023-12-21",   # one day before storm landfall
+            "block_end":        "2023-12-24",   # one day after — spans the storm-day overpass
+            "max_pre_lag_days":  21,
             "max_post_lag_days": 28,
         },
         # LKN survey 2024-01-16: dune breakage on ca. 10.8 km
@@ -268,8 +247,10 @@ QUANTIFICATION_SCALE = 40  # metres
 # season) and peaks in autumn (~Oct). April therefore belongs to the storm
 # window; recovery is the May–Oct ascending limb. Verified on the near_msl
 # series: with this split the recovery>storm sign is correct on all 4 regions.
-STORM_MONTHS    = frozenset({11, 12, 1, 2, 3, 4})   # Nov–Apr, descending limb
-RECOVERY_MONTHS = frozenset({5, 6, 7, 8, 9, 10})    # May–Oct, ascending limb
+STORM_MONTHS          = frozenset({11, 12, 1, 2, 3, 4})   # Nov–Apr, descending limb
+STORM_MONTHS_LABEL    = "Nov–Apr"
+RECOVERY_MONTHS       = frozenset({5, 6, 7, 8, 9, 10})    # May–Oct, ascending limb
+RECOVERY_MONTHS_LABEL = "May–Oct"
 OUTLIER_K = 2.0
 
 # Regions of interest for per-region quantification
