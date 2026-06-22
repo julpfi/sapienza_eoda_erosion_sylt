@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
 
-
 # GEE Config --------------------------------------------------
-GEE_PROJECT_ID = 'eoda-2026-ee-pfingsten'
+GEE_PROJECT_ID = "eoda-2026-ee-pfingsten"
 
 # GEO Json ----------------------------------------------------
 GEO_JSON_SYLT_COASTLINE_BOUNDARY = {
@@ -59,25 +58,25 @@ GEO_JSON_SYLT_COASTLINE_BOUNDARY = {
 
 
 GEO_JSON_SYLT_COMPLETE = {
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "properties": {},
-      "geometry": {
-        "coordinates": [
-          [
-            [8.247309267123967, 54.72748987748213],
-            [8.49587975055735,  54.72748987748213],
-            [8.49587975055735,  55.070835539021544],
-            [8.247309267123967, 55.070835539021544],
-            [8.247309267123967, 54.72748987748213]
-          ]
-        ],
-        "type": "Polygon"
-      }
-    }
-  ]
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+                "coordinates": [
+                    [
+                        [8.247309267123967, 54.72748987748213],
+                        [8.49587975055735, 54.72748987748213],
+                        [8.49587975055735, 55.070835539021544],
+                        [8.247309267123967, 55.070835539021544],
+                        [8.247309267123967, 54.72748987748213],
+                    ]
+                ],
+                "type": "Polygon",
+            },
+        }
+    ],
 }
 
 
@@ -88,9 +87,9 @@ OTSU_MIN_WATER_PIXELS = 256
 
 # Output Paths (absolute from repo root on)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-OUTPUT_PLOTS      = str(_REPO_ROOT / "outputs" / "plots") + "/"
+OUTPUT_PLOTS = str(_REPO_ROOT / "outputs" / "plots") + "/"
 OUTPUT_ANIMATIONS = str(_REPO_ROOT / "outputs" / "animations") + "/"
-OUTPUT_DATA       = str(_REPO_ROOT / "outputs" / "data") + "/"
+OUTPUT_DATA = str(_REPO_ROOT / "outputs" / "data") + "/"
 
 os.makedirs(OUTPUT_PLOTS, exist_ok=True)
 os.makedirs(OUTPUT_ANIMATIONS, exist_ok=True)
@@ -98,47 +97,39 @@ os.makedirs(OUTPUT_DATA, exist_ok=True)
 
 
 # Date range --------------------------------------------------
-START_DATE  = "2017-01-01"
-END_DATE    = "2024-12-31"
+START_DATE = "2017-01-01"
+END_DATE = "2024-12-31"
 
 
 # Visualization Settings --------------------------------------
-VIS_SAR_VV = {
-    "min": -25,
-    "max": 0,
-    "palette": ["000000", "ffffff"]
-}
+VIS_SAR_VV = {"min": -25, "max": 0, "palette": ["000000", "ffffff"]}
 
 # Semantic colour constants
-COLOR_LAND      = "E6D5A8"
-COLOR_WATER     = "274C77"
-COLOR_EROSION   = "D55E00"
-COLOR_ACCRETION = "009E73" 
+COLOR_LAND = "E6D5A8"
+COLOR_WATER = "274C77"
+COLOR_EROSION = "D55E00"
+COLOR_ACCRETION = "009E73"
 
 # Binary water mask (0 = land, 1 = water)
-VIS_BINARY_WATER_MASK = {
-    "min": 0,
-    "max": 1,
-    "palette": [COLOR_LAND, COLOR_WATER]
-}
+VIS_BINARY_WATER_MASK = {"min": 0, "max": 1, "palette": [COLOR_LAND, COLOR_WATER]}
 
 # Change Map (0 = consistent land, 1 = erosion, 2 = accretion, 3 = consistent water)
 VIS_CHANGE_MAP = {
     "min": 0,
     "max": 3,
     "palette": [
-        COLOR_LAND,       # 0 – Consistent land
-        COLOR_EROSION,    # 1 – new water (erosion)
+        COLOR_LAND,  # 0 – Consistent land
+        COLOR_EROSION,  # 1 – new water (erosion)
         COLOR_ACCRETION,  # 2 – new land (recovery)
-        COLOR_WATER,      # 3 – Consistent water
-    ]
+        COLOR_WATER,  # 3 – Consistent water
+    ],
 }
 
 CHANGE_MAP_LABELS = [
     "Consistent land",
     "New water (erosion)",
     "New land (recovery)",
-    "Consistent water"
+    "Consistent water",
 ]
 
 
@@ -150,7 +141,7 @@ VIS_S2_TRUE_COLOR = {
 # NDWI  = (Green – NIR) / (Green + NIR)  →  water > 0
 VIS_S2_NDWI = {
     "min": -0.3,
-    "max":  0.5,
+    "max": 0.5,
     "palette": ["d4d4d4", "aaddff", "0066cc"],
 }
 
@@ -161,24 +152,23 @@ S1_PASS = "DESCENDING"
 S1_ORBIT = 139
 
 
-
 # Optical Config ----------------------------------------------
 S2_COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
 MAX_CLOUD_PERC = 20
-OPTICAL_MONTHS   = [5, 6, 7, 8, 9] 
+OPTICAL_MONTHS = [5, 6, 7, 8, 9]
 
 
 # Tidal Control -----------------------------------------------
 # Using Copernicus Marine Service (CMEMS)
 # Dataset : cmems_mod_nws_phy-ssh_my_7km-2D_PT1H-i
 
-CMEMS_DATASET  = "cmems_mod_nws_phy-ssh_my_7km-2D_PT1H-i"
+CMEMS_DATASET = "cmems_mod_nws_phy-ssh_my_7km-2D_PT1H-i"
 # Variable: zos = Sea surface height above geoid (m)
-CMEMS_VARIABLE = "zos" 
+CMEMS_VARIABLE = "zos"
 
 # Bounding box of sylt
-CMEMS_LON_MIN =  8.3
-CMEMS_LON_MAX =  8.6
+CMEMS_LON_MIN = 8.3
+CMEMS_LON_MAX = 8.6
 CMEMS_LAT_MIN = 54.9
 CMEMS_LAT_MAX = 55.1
 
@@ -187,15 +177,26 @@ CMEMS_DATA_PATH = str(_REPO_ROOT / "data" / "cmems" / "sea_surface_heigth_sylt.c
 
 # Tidal filter ------------------------------------------------
 # Option A – window = reject images outside +/- TIDAL_WINDOW_M of MSL
-TIDAL_WINDOW_M = 0.25   # metres either side of MSL (Option A)
+TIDAL_WINDOW_M = 0.25  # metres either side of MSL (Option A)
 
 # Option B – binning = group images into tidal bins and select bin
-BIN_EDGES  = [-3.0, -0.75, -0.25, 0.25, 0.75, 3.0]
+BIN_EDGES = [-3.0, -0.75, -0.25, 0.25, 0.75, 3.0]
 BIN_LABELS = ["very_low", "low_mid", "near_msl", "high_mid", "very_high"]
 
-MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
+MONTH_NAMES = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+]
 
 
 # SAR Storm Event Analysis
@@ -207,9 +208,9 @@ STORM_EVENTS = {
     "sabine_2020": {
         "name": "Sabine",
         "select": {
-            "block_start":      "2020-02-09",   # one day before storm landfall
-            "block_end":        "2020-02-11",   # one day after — spans the storm-day overpass
-            "max_pre_lag_days":  14,
+            "block_start": "2020-02-09",  # one day before storm landfall
+            "block_end": "2020-02-11",  # one day after — spans the storm-day overpass
+            "max_pre_lag_days": 14,
             "max_post_lag_days": 21,
         },
         # LKN survey 2020-02-13: dune breakage on ca. 12.5 km
@@ -218,9 +219,9 @@ STORM_EVENTS = {
     "ylenia_zeynep_antonia_2022": {
         "name": "Ylenia / Zeynep / Antonia (cluster)",
         "select": {
-            "block_start":      "2022-02-16",   # Ylenia arrival; cluster ends with Antonia
-            "block_end":        "2022-02-21",
-            "max_pre_lag_days":  21,
+            "block_start": "2022-02-16",  # Ylenia arrival; cluster ends with Antonia
+            "block_end": "2022-02-21",
+            "max_pre_lag_days": 21,
             "max_post_lag_days": 28,
         },
         # LKN survey 2022-02-20: dune breakage on ca. 9.7 km
@@ -228,9 +229,9 @@ STORM_EVENTS = {
     "zoltan_2023": {
         "name": "Zoltan",
         "select": {
-            "block_start":      "2023-12-21",   # one day before storm landfall
-            "block_end":        "2023-12-24",   # one day after — spans the storm-day overpass
-            "max_pre_lag_days":  21,
+            "block_start": "2023-12-21",  # one day before storm landfall
+            "block_end": "2023-12-24",  # one day after — spans the storm-day overpass
+            "max_pre_lag_days": 21,
             "max_post_lag_days": 28,
         },
         # LKN survey 2024-01-16: dune breakage on ca. 10.8 km
@@ -240,16 +241,16 @@ STORM_EVENTS = {
 
 # Quantification -----------------------------------------------
 # Fixed scale for all area computations
-QUANTIFICATION_SCALE = 40  # metres
+QUANTIFICATION_SCALE = 20  # metres
 
 # Seasonal month windows (climatology-driven).
 # Land-area climatology troughs in April (cumulative end of the storm/erosion
 # season) and peaks in autumn (~Oct). April therefore belongs to the storm
 # window; recovery is the May–Oct ascending limb. Verified on the near_msl
 # series: with this split the recovery>storm sign is correct on all 4 regions.
-STORM_MONTHS          = frozenset({11, 12, 1, 2, 3, 4})   # Nov–Apr, descending limb
-STORM_MONTHS_LABEL    = "Nov–Apr"
-RECOVERY_MONTHS       = frozenset({5, 6, 7, 8, 9, 10})    # May–Oct, ascending limb
+STORM_MONTHS = frozenset({11, 12, 1, 2, 3, 4})  # Nov–Apr, descending limb
+STORM_MONTHS_LABEL = "Nov–Apr"
+RECOVERY_MONTHS = frozenset({5, 6, 7, 8, 9, 10})  # May–Oct, ascending limb
 RECOVERY_MONTHS_LABEL = "May–Oct"
 OUTLIER_K = 2.0
 
@@ -318,14 +319,14 @@ REGIONS_OF_INTEREST = {
                     "type": "Polygon",
                     "coordinates": [
                         [
-                            [8.268935, 54.757377],
-                            [8.2681684, 54.7508296], 
-                            [8.2770608, 54.7419802],
-                            [8.3017449, 54.7409182],
-                            [8.313397, 54.7473786],
-                            [8.3078776, 54.7543689],
+                            [8.2663235, 54.7582276],
+                            [8.2610207, 54.7484017],
+                            [8.2714033, 54.7384129],
+                            [8.2996671, 54.7372474],
+                            [8.3128507, 54.7471882],
+                            [8.3083673, 54.7561005],
                             [8.2873331, 54.7599425],
-                            [8.268935, 54.757377],
+                            [8.2663235, 54.7582276],
                         ]
                     ],
                 },
@@ -333,6 +334,15 @@ REGIONS_OF_INTEREST = {
         ],
     },
 }
+
+
+REGION_COLORS: dict[str,str] = {
+    "list_ellenbogen":      "#FF9F1C",
+    "rotes_kliff_kampen":   "#E63946",
+    "hoernum_odde":         "#B5179E",
+    "west_coast_aggregate": "#0077B6" 
+}
+
 
 # Whole west-coast polygon for the aggregate feature
 WEST_COAST_AGGREGATE = {

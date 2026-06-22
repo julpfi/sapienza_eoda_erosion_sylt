@@ -16,7 +16,7 @@ from utils.config import (
     OUTPUT_PLOTS, OUTPUT_ANIMATIONS, OUTPUT_DATA,
     VIS_CHANGE_MAP, VIS_BINARY_WATER_MASK, VIS_SAR_VV,
     STORM_MONTHS, STORM_MONTHS_LABEL, RECOVERY_MONTHS, RECOVERY_MONTHS_LABEL, OUTLIER_K,
-    MONTH_NAMES,
+    MONTH_NAMES, REGION_COLORS,
 )
 from utils.tidal_utils import filter_bin
 from analysis.sar_core import get_otsu_mask
@@ -41,12 +41,8 @@ def build_region_fc() -> ee.FeatureCollection:
         geom = ee.Geometry(geojson["features"][0]["geometry"])
         features.append(ee.Feature(geom, {"name": name, "is_spit": name in SPIT_REGIONS}))
 
-    if WEST_COAST_AGGREGATE is not None:
-        agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
-    else:
-        agg_geom = _get_aoi()
-
-    features.append(ee.Feature(agg_geom, {"name": "island_aggregate", "is_spit": False}))
+    agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
+    features.append(ee.Feature(agg_geom, {"name": "west_coast_aggregate", "is_spit": False}))
     return ee.FeatureCollection(features)
 
 
@@ -141,6 +137,7 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
     if cache_csv and os.path.exists(cache_csv):
         print(f"Loading land-area timeseries from cache: {cache_csv}")
         df = (pd.read_csv(cache_csv).assign(date=lambda d: pd.to_datetime(d["date"])))
+        df["region"] = df["region"].replace("island_aggregate", "west_coast_aggregate")
         return df
 
     # Cache-Miss -> Building timeseries
@@ -149,7 +146,7 @@ def quantify_timeseries(col: ee.ImageCollection=None, scale: int=QUANTIFICATION_
         col = filter_bin(col, "near_msl")
 
     col_size  = col.size().getInfo()
-    print(f"\nQuantify_timeseries: {col_size} images (batch_size={batch_size})")
+    print(f"\nQuantify_timeseries: {col_size} images (batch_size={batch_size}) with scale {QUANTIFICATION_SCALE}")
 
     region_fc = build_region_fc()
     img_list = col.sort("system:time_start").toList(col_size)
@@ -288,13 +285,14 @@ def print_timeseries_summary(df: pd.DataFrame):
     print("  [OLS trend; seasonal autocorrelation makes SE anti-conservative → p > 0.05 is a robust null]")
 
 
-def plot_timeseries(df: pd.DataFrame, save: bool = False):
+def plot_timeseries(df: pd.DataFrame, save: bool = False, show: bool = False):
     """Line plot of land area per region over time"""
     fig, ax = plt.subplots(figsize=(13, 5))
 
     for region, grp in df.groupby("region"):
         grp = grp.sort_values("date")
-        ax.plot(grp["date"], grp["land_km2"], marker=".", markersize=3, label=region)
+        ax.plot(grp["date"], grp["land_km2"], marker=".", markersize=3, label=region,
+                color=REGION_COLORS.get(region, "#888888"))
 
     ax.set_xlabel("Date")
     ax.set_ylabel("Land area (km2)")
@@ -307,7 +305,8 @@ def plot_timeseries(df: pd.DataFrame, save: bool = False):
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 # --------------------------------------------------------
@@ -331,6 +330,7 @@ def quantify_change_timeseries(col: ee.ImageCollection,
                   date_pre = lambda d: pd.to_datetime(d["date_pre"]),
                   date_post = lambda d: pd.to_datetime(d["date_post"]),
               ))
+        df["region"] = df["region"].replace("island_aggregate", "west_coast_aggregate")
         return df
 
     # Cache-Miss -> Building change timeseries
@@ -434,7 +434,7 @@ def print_change_summary(df: pd.DataFrame):
 
 
 
-def plot_change_timeseries(df: pd.DataFrame, save: bool = False):
+def plot_change_timeseries(df: pd.DataFrame, save: bool = False, show: bool = False):
     """
     Region-wise erosion and accretion lines over time (->consecutive pairs)
     Points are at their actual post-acquisition date
@@ -468,18 +468,21 @@ def plot_change_timeseries(df: pd.DataFrame, save: bool = False):
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 # --------------------------------------------------------
 #  Seasonal / climatological plots
 # --------------------------------------------------------
 
-def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False):
+def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False, show: bool = False):
     """
-    Vertically stacked monthly climatology: 
-        top = anomaly and  bottom = per-region mean 
-    Computation uses year × month means first so each year contributes equally regardless ofnumber of images in that month 
+    Vertically stacked monthly climatology:
+        top = anomaly (bold per-region mean, no shading)
+        bottom = per-region panels with faint individual-year lines + bold mean
+    Computation uses year × month means first so each year contributes equally
+    regardless of number of images in that month.
     """
 
     df2 = df.copy()
@@ -490,77 +493,88 @@ def plot_monthly_land_area_cycle(df: pd.DataFrame, save: bool = False):
     ym_mean = (df2.groupby(["region", "year", "month"])["land_km2"]
                .mean().reset_index())
 
-    # Step 2: climatology (mean and inter-annual std) per region x month
+    # Step 2: climatology per region x month
     clim = (ym_mean
             .groupby(["region", "month"])["land_km2"]
-            .agg(["mean", "std"]).reset_index()
-            .rename(columns={"mean": "clim_mean", "std": "clim_std"}))
+            .mean().reset_index()
+            .rename(columns={"land_km2": "clim_mean"}))
 
-    # Step 3: region overall mean
+    # Step 3: region overall mean (for anomaly)
     region_mean = ym_mean.groupby("region")["land_km2"].mean()
 
     regions = sorted(df["region"].unique())
     n_regions = len(regions)
     n_cols = 2 if n_regions <= 4 else 3
     n_rows = (n_regions + n_cols - 1) // n_cols
-    colors = plt.cm.tab10(np.linspace(0, 1, n_regions))
 
     fig = plt.figure(figsize=(13, 4 + 4 * n_rows))
     gs = gridspec.GridSpec(1 + n_rows, n_cols, figure=fig,
-                            hspace=0.55, wspace=0.35)
+                           hspace=0.55, wspace=0.35)
 
-
-    # Top panel: anomaly 
+    # Top panel: anomaly — bold mean lines only, no shading
     ax_top = fig.add_subplot(gs[0, :])
     months = list(range(1, 13))
 
-    for color, region in zip(colors, regions):
-        r      = clim[clim["region"] == region].sort_values("month")
-        anom   = r["clim_mean"] - region_mean[region]
-        std    = r["clim_std"].fillna(0)
+    for region in regions:
+        color = REGION_COLORS.get(region, "#888888")
+        r    = clim[clim["region"] == region].sort_values("month")
+        anom = r["clim_mean"] - region_mean[region]
         ax_top.plot(r["month"], anom, marker="o", markersize=5,
-                    label=region, color=color)
-        ax_top.fill_between(r["month"], anom - std, anom + std,
-                            alpha=0.15, color=color)
+                    linewidth=2.0, label=region, color=color)
 
     ax_top.axhline(0, color="black", linewidth=0.8, linestyle="--")
     ax_top.set_xticks(months)
     ax_top.set_xticklabels(MONTH_NAMES)
     ax_top.set_ylabel("Land-area anomaly (km2)")
-    ax_top.set_title("Monthly land-area anomaly 2017–2024 (near_msl bin) — shading ±1σ inter-annual")
+    ax_top.set_title("Monthly land-area anomaly 2017–2024 (near_msl bin)")
     ax_top.legend(fontsize=8, ncol=min(4, n_regions))
 
-
-    # Bottom panels: raw mean per region 
-    for idx, (color, region) in enumerate(zip(colors, regions)):
+    # Bottom panels: faint per-year lines + bold mean
+    for idx, region in enumerate(regions):
+        color = REGION_COLORS.get(region, "#888888")
         row = 1 + idx // n_cols
         col = idx % n_cols
         ax  = fig.add_subplot(gs[row, col])
-        r   = clim[clim["region"] == region].sort_values("month")
-        std = r["clim_std"].fillna(0)
-        ax.plot(r["month"], r["clim_mean"], marker="o", markersize=4, color=color)
-        ax.fill_between(r["month"],
-                        r["clim_mean"] - std, r["clim_mean"] + std,
-                        alpha=0.2, color=color)
+
+        ym_r = ym_mean[ym_mean["region"] == region]
+        for _, ym_yr in ym_r.groupby("year"):
+            ym_yr = ym_yr.sort_values("month")
+            if len(ym_yr) >= 2:
+                ax.plot(ym_yr["month"], ym_yr["land_km2"],
+                        color=color, alpha=0.30, linewidth=0.8)
+
+        r = clim[clim["region"] == region].sort_values("month")
+        ax.plot(r["month"], r["clim_mean"],
+                marker="o", markersize=4, linewidth=2.5, color=color)
+
         ax.set_xticks(months)
         ax.set_xticklabels(MONTH_NAMES, fontsize=7, rotation=45, ha="right")
         ax.set_title(region, fontsize=9)
         ax.set_ylabel("Land km2", fontsize=8)
 
+        thin_line, = ax.plot([], [], color=color, linewidth=0.8, alpha=0.30,
+                             label="Individual years")
+        bold_line, = ax.plot([], [], color=color, linewidth=2.5, marker="o",
+                             markersize=4, label="Mean")
+        ax.legend(handles=[thin_line, bold_line], fontsize=7)
+
+    fig.suptitle("Monthly land-area cycle 2017–2024 (near_msl bin)\n"
+                 "thin = individual years, bold = mean", y=1.01)
 
     if save:
         path = f"{OUTPUT_PLOTS}monthly_land_area_cycle.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
-def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False):
+def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False, show: bool = False):
     """
-    Mean erosion and accretion per calendar month 
-    Groups by region x year x month and then averages across years
-    Subplots per reagions
+    Mean erosion and accretion per calendar month.
+    Bold mean lines + faint individual-year lines (spaghetti) per region.
+    Groups by region x year x month, then averages across years.
     """
     df2 = change_df.copy()
     df2["year"] = df2["date_post"].dt.year
@@ -572,45 +586,56 @@ def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False):
           .mean().reset_index())
     clim = (ym
             .groupby(["region", "month"])[["erosion_km2", "accretion_km2"]]
-            .agg(["mean", "std"]).reset_index())
-    
-    clim.columns = ["region", "month",
-                    "erosion_mean", "erosion_std",
-                    "accretion_mean", "accretion_std"]
+            .mean().reset_index()
+            .rename(columns={"erosion_km2": "erosion_mean",
+                             "accretion_km2": "accretion_mean"}))
 
-    erosion_color = f"#{VIS_CHANGE_MAP['palette'][1]}"
-    accretion_color = f"#{VIS_CHANGE_MAP['palette'][2]}"
+    erosion_color    = f"#{VIS_CHANGE_MAP['palette'][1]}"
+    accretion_color  = f"#{VIS_CHANGE_MAP['palette'][2]}"
 
-    regions = sorted(change_df["region"].unique())
+    regions   = sorted(change_df["region"].unique())
     n_regions = len(regions)
-    x = np.arange(12)
-    width = 0.4
 
     fig, axes = plt.subplots(n_regions, 1, figsize=(12, 3.5 * n_regions), sharex=True)
     if n_regions == 1:
         axes = [axes]
 
     for ax, region in zip(axes, regions):
-        r = (clim[clim["region"] == region]
-             .set_index("month").reindex(range(1, 13)).reset_index())
+        r    = (clim[clim["region"] == region]
+                .set_index("month").reindex(range(1, 13)).reset_index())
+        ym_r = ym[ym["region"] == region]
 
-        ax.bar(x - width / 2, r["erosion_mean"], width,
-               color=erosion_color, alpha=0.85, label="Erosion km2")
-        ax.bar(x + width / 2, r["accretion_mean"], width,
-               color=accretion_color, alpha=0.85, label="Accretion km2")
-        ax.errorbar(x - width / 2, r["erosion_mean"], yerr=r["erosion_std"],
-                    fmt="none", color="black", capsize=3, linewidth=0.8)
-        ax.errorbar(x + width / 2, r["accretion_mean"], yerr=r["accretion_std"],
-                    fmt="none", color="black", capsize=3, linewidth=0.8)
+        # Faint individual-year lines
+        for _, ym_yr in ym_r.groupby("year"):
+            ym_yr = ym_yr.sort_values("month")
+            ax.plot(ym_yr["month"], ym_yr["erosion_km2"],
+                    color=erosion_color,   alpha=0.28, linewidth=0.8)
+            ax.plot(ym_yr["month"], ym_yr["accretion_km2"],
+                    color=accretion_color, alpha=0.28, linewidth=0.8)
 
-        ax.set_xticks(x)
+        # Bold mean lines on top
+        ax.plot(r["month"], r["erosion_mean"],
+                color=erosion_color,   linewidth=2.5, marker="o", markersize=4)
+        ax.plot(r["month"], r["accretion_mean"],
+                color=accretion_color, linewidth=2.5, marker="o", markersize=4)
+
+        ax.set_xticks(range(1, 13))
         ax.set_xticklabels(MONTH_NAMES)
         ax.set_ylabel("Area (km2)")
         ax.set_title(region)
-        ax.legend(fontsize=8)
+
+        thin_e,  = ax.plot([], [], color=erosion_color,   linewidth=0.8, alpha=0.28,
+                           label="Erosion (individual years)")
+        thin_a,  = ax.plot([], [], color=accretion_color, linewidth=0.8, alpha=0.28,
+                           label="Accretion (individual years)")
+        bold_e,  = ax.plot([], [], color=erosion_color,   linewidth=2.5, marker="o",
+                           markersize=4, label="Erosion (mean)")
+        bold_a,  = ax.plot([], [], color=accretion_color, linewidth=2.5, marker="o",
+                           markersize=4, label="Accretion (mean)")
+        ax.legend(handles=[bold_e, bold_a, thin_e, thin_a], fontsize=7, ncol=2)
 
     fig.suptitle("Mean monthly erosion / accretion 2017–2024 (year-equalized, near_msl bin)\n"
-                 "Error bars = ±1σ inter-annual", y=1.01)
+                 "thin = individual years, bold = mean", y=1.01)
     plt.tight_layout()
 
     if save:
@@ -618,13 +643,15 @@ def plot_erosion_by_month(change_df: pd.DataFrame, save: bool = False):
         fig.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
-def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False):
+def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False, show: bool = False):
     """
-    Monthly-averaged land area over the full 2017-2024 record
-    One point per calendar-month x year cell (averages over multiple acquisitions in the same month) 
+    Monthly-averaged land area over the full 2017-2024 record.
+    Top panel: individual regions. Bottom panel: west_coast_aggregate alone.
+    One point per calendar-month x year cell (averages over multiple acquisitions in the same month).
     """
 
     df2 = df.copy()
@@ -635,21 +662,30 @@ def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False):
                .mean().reset_index())
     monthly["date"] = monthly["year_month"].dt.to_timestamp()
 
-    regions = sorted(monthly["region"].unique())
-    colors = plt.cm.tab10(np.linspace(0, 1, len(regions)))
+    all_regions = sorted(monthly["region"].unique())
+    region_regions = [r for r in all_regions if r != "west_coast_aggregate"]
 
-    fig, ax = plt.subplots(figsize=(14, 5))
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(14, 9), sharex=True)
 
-    for color, region in zip(colors, regions):
+    for region in region_regions:
         grp = monthly[monthly["region"] == region].sort_values("date")
-        ax.plot(grp["date"], grp["land_km2"],
-                marker=".", markersize=5, linewidth=1.2,
-                label=region, color=color)
+        ax_top.plot(grp["date"], grp["land_km2"],
+                    marker=".", markersize=5, linewidth=1.2,
+                    label=region, color=REGION_COLORS.get(region, "#888888"))
+    ax_top.set_ylabel("Land area (km2)")
+    ax_top.set_title("Regions — monthly mean land area 2017–2024 (near_msl bin)")
+    ax_top.legend(fontsize=8)
 
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Land area (km2)")
-    ax.set_title("Monthly mean land area 2017-2024 (near_msl bin)")
-    ax.legend(fontsize=8)
+    grp_agg = monthly[monthly["region"] == "west_coast_aggregate"].sort_values("date")
+    ax_bot.plot(grp_agg["date"], grp_agg["land_km2"],
+                marker=".", markersize=5, linewidth=1.2,
+                color=REGION_COLORS.get("west_coast_aggregate", "#888888"),
+                label="west_coast_aggregate")
+    ax_bot.set_xlabel("Date")
+    ax_bot.set_ylabel("Land area (km2)")
+    ax_bot.set_title("West coast aggregate — monthly mean land area 2017–2024 (near_msl bin)")
+    ax_bot.legend(fontsize=8)
+
     plt.tight_layout()
 
     if save:
@@ -657,4 +693,5 @@ def plot_land_area_monthly_means(df: pd.DataFrame, save: bool = False):
         fig.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()

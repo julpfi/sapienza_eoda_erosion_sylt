@@ -32,14 +32,8 @@ def build_region_fc() -> ee.FeatureCollection:
         geom = ee.Geometry(geojson["features"][0]["geometry"])
         features.append(ee.Feature(geom, {"name": name, "is_spit": name in SPIT_REGIONS}))
 
-    # Western coast aggregate (falls back to island AOI if not yet defined)
-    if WEST_COAST_AGGREGATE is not None:
-        agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
-    else:
-        print("WEST_COAST_AGGREGATE not set - using island AOI as aggregate")
-        agg_geom = _get_aoi()
-
-    features.append(ee.Feature(agg_geom, {"name": "island_aggregate", "is_spit": False}))
+    agg_geom = ee.Geometry(WEST_COAST_AGGREGATE["features"][0]["geometry"])
+    features.append(ee.Feature(agg_geom, {"name": "west_coast_aggregate", "is_spit": False}))
     return ee.FeatureCollection(features)
 
 

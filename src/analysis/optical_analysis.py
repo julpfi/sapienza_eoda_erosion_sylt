@@ -21,7 +21,7 @@ from utils.config import (
     VIS_S2_TRUE_COLOR, VIS_S2_NDWI,
     REGIONS_OF_INTEREST, WEST_COAST_AGGREGATE,
     GEO_JSON_SYLT_COMPLETE,
-    MONTH_NAMES,
+    MONTH_NAMES, REGION_COLORS,
 )
 
 
@@ -237,8 +237,9 @@ def assess_s2_availability(cloud_thresholds: tuple[int, int]=(20, 40), tidal_bin
 #  5. Best-Scene Presentation Visual
 # ------------------------------------------------------------ #
 
-def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str, save: bool = False) -> None:
-    """True-colour thumbnail with axis-aligned bounding boxes for each ROI and the aggregate."""
+def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str
+                          , save:bool=False, show:bool=False) -> None:
+    """True-colour thumbnail with actual polygon outlines for each ROI and the aggregate"""
     aoi_coords = GEO_JSON_SYLT_COMPLETE["features"][0]["geometry"]["coordinates"][0]
     lon_min = min(c[0] for c in aoi_coords)
     lon_max = max(c[0] for c in aoi_coords)
@@ -254,20 +255,17 @@ def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str, save: bool = Fals
 
     def make_patch(geojson, color, label):
         coords = geojson["features"][0]["geometry"]["coordinates"][0]
-        lons = [c[0] for c in coords]
-        lats = [c[1] for c in coords]
-        x0, y0 = geo_to_pix(min(lons), max(lats))   # top-left in pixel space
-        x1, y1 = geo_to_pix(max(lons), min(lats))   # bottom-right in pixel space
-        return mpatches.Rectangle(
-            (x0, y0), x1 - x0, y1 - y0,
+        pixel_coords = [geo_to_pix(c[0], c[1]) for c in coords]
+        return mpatches.Polygon(
+            pixel_coords, closed=True,
             linewidth=2.5, edgecolor=color, facecolor="none", label=label, zorder=5,
         )
 
     region_configs = [
-        (REGIONS_OF_INTEREST["list_ellenbogen"],    "#e6194b", "List / Ellenbogen"),
-        (REGIONS_OF_INTEREST["rotes_kliff_kampen"], "#f58231", "Rotes Kliff / Kampen"),
-        (REGIONS_OF_INTEREST["hoernum_odde"],       "#4363d8", "Hoernum Odde"),
-        (WEST_COAST_AGGREGATE,                      "#3cb44b", "West coast (aggregate)"),
+        (REGIONS_OF_INTEREST["list_ellenbogen"],    REGION_COLORS["list_ellenbogen"],      "List / Ellenbogen"),
+        (REGIONS_OF_INTEREST["rotes_kliff_kampen"], REGION_COLORS["rotes_kliff_kampen"],   "Rotes Kliff / Kampen"),
+        (REGIONS_OF_INTEREST["hoernum_odde"],       REGION_COLORS["hoernum_odde"],         "Hoernum Odde"),
+        (WEST_COAST_AGGREGATE,                      REGION_COLORS["west_coast_aggregate"], "West coast (aggregate)"),
     ]
 
     fig_h = 7.0
@@ -278,7 +276,7 @@ def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str, save: bool = Fals
     for geojson, color, label in region_configs:
         ax.add_patch(make_patch(geojson, color, label))
 
-    ax.legend(loc="lower left", fontsize=8, framealpha=0.85)
+    ax.legend(loc="lower right", fontsize=8, framealpha=0.85)
     ax.set_title(f"Sentinel-2 {scene_date} — Regions of Interest", fontsize=10)
     ax.axis("off")
     plt.tight_layout()
@@ -289,10 +287,12 @@ def _plot_s2_region_boxes(thumb: Image.Image, scene_date: str, save: bool = Fals
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
-def plot_best_s2_scene(year:int|None=None, date:str|None=None, save:bool=False, region_boxes:bool=False) -> None:
+def plot_best_s2_scene(year:int|None=None, date:str|None=None, 
+                       save:bool=False, region_boxes:bool=False, show:bool=False) -> None:
     """
     Selects the cleanest (=lowest CLOUDY_PIXEL_PERCENTAGE), near-MSL summer Sentinel-2 scene over the Sylt AOI  true-colour / NDWI image
     """
@@ -303,7 +303,7 @@ def plot_best_s2_scene(year:int|None=None, date:str|None=None, save:bool=False, 
     col = get_collection_s2()         # summer months, cloud < 20 %
     col = filter_bin(col, tidal_bin)  # near-MSL tidal bin
     if col.size().getInfo() == 0:
-        print("No scenes found after tidal filtering.")
+        print("No scenes found after tidal filtering")
         return
 
     # ── Scene selection ──────────────────────────────────────────────────────
@@ -354,7 +354,8 @@ def plot_best_s2_scene(year:int|None=None, date:str|None=None, save:bool=False, 
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show: 
+        plt.show()
 
     if region_boxes:
-        _plot_s2_region_boxes(tc_thumb, scene_date, save=save)
+        _plot_s2_region_boxes(tc_thumb, scene_date, save=save, show=show)

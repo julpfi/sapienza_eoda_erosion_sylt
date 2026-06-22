@@ -53,8 +53,12 @@ def _mosaic_by_day(col: ee.ImageCollection) -> ee.ImageCollection:
         "orbits": col.aggregate_array("relativeOrbitNumber_start"),
     }).getInfo()
 
-    times  = meta["times"]
-    orbits = meta["orbits"]
+    times  = meta["times"] or []
+    orbits = meta.get("orbits") or []
+    # aggregate_array returns [] (not a list of nulls) for a property absent from all
+    # images (e.g. relativeOrbitNumber_start on S2).  Pad with None so zip stays aligned.
+    if len(orbits) != len(times):
+        orbits = [None] * len(times)
     orbit_aware = any(o is not None for o in orbits)
 
     seen  = set()

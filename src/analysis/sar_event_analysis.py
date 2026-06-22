@@ -141,7 +141,7 @@ def select_event_pair(col: ee.ImageCollection,
 # --------------------------------------------------------
 
 def plot_sar_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
-                   save: bool = False):
+                   save:bool = False, show:bool=False):
     """Plot VV (dB) SAR images for the pre- and post-event acquisitions"""
     aoi = _get_aoi()
 
@@ -164,12 +164,13 @@ def plot_sar_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 
 def plot_coastline_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
-                         mask_scale: int = 40, redefined: bool = True, save: bool = False):
+                         mask_scale: int = 40, redefined: bool = True, save: bool = False, show:bool=False):
     """
     Plot water masks and a 4-class change map for an event
     mask_scale only affects classification accuracy -> the visual appearance does not change really
@@ -180,7 +181,7 @@ def plot_coastline_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
     change = pre_mask.multiply(2).add(post_mask)
 
     print("\n--- Plotting pre-event, post-event, and change map ---")
-    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(13, 5))
     fig.suptitle(f"Coastline analysis of event at {event_date}", fontsize=13)
 
     axes[0].imshow(_open_image_thumbnail(pre_mask, aoi, VIS_BINARY_WATER_MASK))
@@ -192,12 +193,12 @@ def plot_coastline_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
     axes[1].axis("off")
 
     axes[2].imshow(_open_image_thumbnail(change, aoi, VIS_CHANGE_MAP))
-    axes[2].set_title("Change map  (PRE → POST)", fontsize=9)
+    axes[2].set_title("Change map between\npre-event and post-event", fontsize=9)
     axes[2].axis("off")
 
     legend_patches = [mpatches.Patch(color=f"#{color}", label=label)
                       for color, label in zip(VIS_CHANGE_MAP["palette"], CHANGE_MAP_LABELS)]
-    axes[2].legend(handles=legend_patches, loc="lower left", fontsize=7, framealpha=0.8)
+    axes[2].legend(handles=legend_patches, loc="lower right", fontsize=7, framealpha=0.8)
 
     plt.tight_layout()
 
@@ -207,7 +208,8 @@ def plot_coastline_event(pre_img: ee.Image, post_img: ee.Image, event_date: str,
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 # --------------------------------------------------------
@@ -276,8 +278,8 @@ def _print_event_table(df: pd.DataFrame, event_name: str):
 
 
 
-def plot_event_bars(df: pd.DataFrame, storm_id: str, save: bool = False):
-    """Grouped bar chart of erosion/accretion per region for one storm."""
+def plot_event_bars(df: pd.DataFrame, storm_id: str, save:bool=False, show:bool=False):
+    """Grouped bar chart of erosion/accretion per region for one storm"""
     if storm_id not in STORM_EVENTS:
         raise ValueError(f"Unknown storm_id: {storm_id}")
 
@@ -305,7 +307,8 @@ def plot_event_bars(df: pd.DataFrame, storm_id: str, save: bool = False):
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
 
-    plt.show()
+    if show:
+        plt.show()
 
 
 # --------------------------------------------------------
@@ -347,7 +350,7 @@ def run_event_analysis(storm_id: str, col: ee.ImageCollection,
 #  Diagnostics
 # --------------------------------------------------------
 
-def compare_scales_sabine(save: bool = False):
+def compare_scales_sabine(save:bool=False, show:bool=False):
     """Run Sabine at 40 m, 20 m, and 10 m and print erosion/accretion side by side.
 
     Use this to decide whether finer resolution sharpens the signal enough to
@@ -407,7 +410,9 @@ def compare_scales_sabine(save: bool = False):
         path = f"{OUTPUT_PLOTS}scale_comparison_sabine.png"
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved to {path}")
-        plt.show()
+        
+        if show:
+            plt.show()
 
 
 

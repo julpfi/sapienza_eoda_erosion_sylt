@@ -58,12 +58,12 @@ def sar_event_analysis(storm_id: str, save: bool = False):
     event.run_event_analysis(storm_id, s1_col, save=save)
 
 
-def scale_comparison(save: bool = False):
+def scale_comparison(save:bool=False):
     """Run Sabine at 40/20/10 m and optionally save a methods comparison figure"""
     event.compare_scales_sabine(save=save)
 
 
-def seasonal_quantification(tidal_bin: str = "near_msl", save: bool = False):
+def seasonal_quantification(tidal_bin:str="near_msl", save:bool=False):
     col = get_col(collection="S1", tidal_bin=tidal_bin)
 
     cache_land = f"{OUTPUT_DATA}land_area_scale{QUANTIFICATION_SCALE}.csv"
@@ -153,15 +153,20 @@ if __name__ == "__main__":
     # sar_otsu_test("2019-06-27")
     # sar_otsu_test(tidal_bin="very_high")
 
+    # ------------ OPTICAL BEST SCENE ----------
+    #opt_best_scene(save=True, region_boxes=True)
+
     # ------- EVENT -----------
-    for STORM_ID in ["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
-        sar_event_analysis(STORM_ID, save=True)
+    #STORM_ID  = "ylenia_zeynep_antonia_2022"
+    #["sabine_2020", "ylenia_zeynep_antonia_2022", "zoltan_2023"]:
+    #sar_event_analysis(STORM_ID, save=True)
     # scale_comparison(save=True)
     #event.test_pair_selection()
 
-    # ---- VERIFY: timeseries path still uses orbit 139 (default) ----
-    # seasonal_quantification(tidal_bin="near_msl", save=True)
-    # sar_timeseries(tidal_bin="near_msl")
+    # -------- -Time Series ------------------
+
+    seasonal_quantification(tidal_bin="near_msl", save=True)
+    #sar_timeseries(tidal_bin="near_msl")
 
     # ------------ SAR AVAILABILITY ----------
     # sar_availability()
@@ -169,8 +174,7 @@ if __name__ == "__main__":
     # ------------ OPTICAL AVAILABILITY ----------
     # opt_availability()
 
-    # ------------ OPTICAL BEST SCENE ----------
-    # opt_best_scene(date="2020-08-15", save=True, region_boxes=True)
+    
    
 
     
